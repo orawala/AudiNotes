@@ -21,17 +21,14 @@ const notesCount = document.getElementById('notesCount');
 const allCount = document.getElementById('allCount');
 const projectList = document.getElementById('projectList');
 const searchInput = document.getElementById('searchInput');
-const sortSelect = document.getElementById('sortSelect');
 const currentCrumb = document.getElementById('currentCrumb');
 const pageTitle = document.getElementById('pageTitle');
 
 // Persistent Player Elements
 const persistentPlayer = document.getElementById('persistentPlayer');
 const playerTitle = document.getElementById('playerTitle');
-const playerSub = document.getElementById('playerSub');
 const globalAudioPlayer = document.getElementById('globalAudioPlayer');
 const playerPlayPauseBtn = document.getElementById('playerPlayPauseBtn');
-const playerCloseBtn = document.getElementById('playerCloseBtn');
 
 // Initialize Web Speech API Transcription
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -201,12 +198,11 @@ function renderNotes() {
   `).join('');
 }
 
-// Persistent Bottom Audio Player Controls (Spotify Style)
+// Permanent Bottom Audio Player Action
 window.playAudioTrack = function(title, audioUrl) {
-  if (!persistentPlayer || !globalAudioPlayer) return;
+  if (!globalAudioPlayer) return;
   playerTitle.textContent = title;
   globalAudioPlayer.src = audioUrl;
-  persistentPlayer.classList.remove('hidden');
   globalAudioPlayer.play();
   if (playerPlayPauseBtn) playerPlayPauseBtn.textContent = '⏸';
 };
@@ -220,11 +216,6 @@ playerPlayPauseBtn?.addEventListener('click', () => {
     globalAudioPlayer.pause();
     playerPlayPauseBtn.textContent = '▶';
   }
-});
-
-playerCloseBtn?.addEventListener('click', () => {
-  if (globalAudioPlayer) globalAudioPlayer.pause();
-  persistentPlayer?.classList.add('hidden');
 });
 
 // Edit Note Modal
@@ -345,7 +336,7 @@ document.getElementById('saveProjectBtn')?.addEventListener('click', async () =>
   fetchWorkspaceData();
 });
 
-// Audio Recording Controls (Lag-Free & Full Stream Release Fix)
+// Audio Recording Controls
 const startRecordBtn = document.getElementById('startRecordBtn');
 const stopRecordBtn = document.getElementById('stopRecordBtn');
 const recordOrb = document.getElementById('recordOrb');
@@ -393,7 +384,6 @@ stopRecordBtn?.addEventListener('click', () => {
     mediaRecorder.stop();
   }
 
-  // Explicitly close audio stream tracks to release browser microphone indicator
   if (audioStream) {
     audioStream.getTracks().forEach(track => track.stop());
     audioStream = null;
