@@ -18,13 +18,13 @@
       <div class="eyebrow" id="authEyebrow">YOUR PERSONAL WORKSPACE</div>
       <h1 id="authTitle">Welcome back<span class="title-period">.</span></h1>
       <p class="auth-intro" id="authIntro">Sign in to pick up where your thoughts left off.</p>
-      <form id="authForm">
+      <form id="authForm" onsubmit="return false;">
         <label class="field-label" for="authEmail">Email address</label>
         <input class="text-field" id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" required>
         <label class="field-label" for="authPassword">Password</label>
         <input class="text-field" id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters" minlength="6" required>
         <div class="auth-error hidden" id="authError" role="alert"></div>
-        <button class="primary-button auth-submit" id="authSubmit" type="submit">Sign in</button>
+        <button class="primary-button auth-submit" id="authSubmit" type="button">Sign in</button>
       </form>
       <div class="auth-switch"><span id="authSwitchText">New to AudiNotes?</span> <button type="button" id="authSwitchBtn">Create an account</button></div>
       <p class="auth-footnote">Your account is secured by Supabase.</p>
@@ -34,7 +34,7 @@
 
   <div class="account-menu hidden" id="accountMenu">
     <div class="account-menu-email" id="accountEmail"></div>
-    <button id="logoutBtn">Sign out</button>
+    <button id="logoutBtn" type="button">Sign out</button>
   </div>
 
   <div class="app-shell" id="appShell">
@@ -43,18 +43,18 @@
         <div class="brand-mark"><span></span><span></span><span></span></div>
         <div><div class="brand-name">AudiNotes</div><div class="brand-subtitle">Your thoughts, your voice.</div></div>
       </div>
-      <button class="primary-button new-project" id="newProjectBtn"><span class="plus">＋</span> New project</button>
+      <button class="primary-button new-project" id="newProjectBtn" type="button"><span class="plus">＋</span> New project</button>
       <div class="side-label">WORKSPACE</div>
-      <button class="nav-item active" data-filter="all"><span class="nav-icon">▦</span> All notes <span class="nav-count" id="allCount">0</span></button>
-      <button class="nav-item" data-filter="text"><span class="nav-icon">▤</span> Text notes</button>
-      <button class="nav-item" data-filter="voice"><span class="nav-icon">◖</span> Voice notes</button>
-      <div class="projects-heading"><span class="side-label">PROJECTS</span><button class="icon-button small" id="sideAddProject" title="Add project">＋</button></div>
+      <button class="nav-item active" data-filter="all" type="button"><span class="nav-icon">▦</span> All notes <span class="nav-count" id="allCount">0</span></button>
+      <button class="nav-item" data-filter="text" type="button"><span class="nav-icon">▤</span> Text notes</button>
+      <button class="nav-item" data-filter="voice" type="button"><span class="nav-icon">◖</span> Voice notes</button>
+      <div class="projects-heading"><span class="side-label">PROJECTS</span><button class="icon-button small" id="sideAddProject" title="Add project" type="button">＋</button></div>
       <div class="project-list" id="projectList"></div>
     </aside>
 
     <main class="main-area">
       <header class="topbar">
-        <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu">☰</button>
+        <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu" type="button">☰</button>
         <nav class="breadcrumbs" id="breadcrumbNav" aria-label="Breadcrumb">
           <button type="button" class="crumb-btn" id="crumbWorkspace">Workspace</button>
           <span class="crumb-slash">/</span>
@@ -62,7 +62,7 @@
         </nav>
         <div class="top-actions">
           <div class="save-status"><span class="status-dot"></span> Supabase Sync</div>
-          <button class="avatar-button" id="accountButton" title="Account menu">A</button>
+          <button class="avatar-button" id="accountButton" title="Account menu" type="button">A</button>
         </div>
       </header>
 
@@ -74,8 +74,8 @@
             <p id="pageDescription">A quiet place for everything on your mind.</p>
           </div>
           <div class="heading-actions">
-            <button class="secondary-button" id="newTextBtn"><span>＋</span> Text note</button>
-            <button class="primary-button" id="newVoiceBtn"><span>●</span> Record voice</button>
+            <button class="secondary-button" id="newTextBtn" type="button"><span>＋</span> Text note</button>
+            <button class="primary-button" id="newVoiceBtn" type="button"><span>●</span> Record voice</button>
           </div>
         </div>
 
@@ -103,7 +103,7 @@
     </main>
   </div>
 
-  <!-- Permanent Bottom Audio Player -->
+  <!-- Persistent Bottom Audio Player -->
   <div class="persistent-player hidden" id="persistentPlayer">
     <div class="player-info">
       <span class="player-icon">◖</span>
@@ -113,10 +113,10 @@
       </div>
     </div>
     <div class="player-controls">
-      <button class="player-btn" id="playerPlayPauseBtn" aria-label="Play or Pause">▶</button>
+      <button class="player-btn" id="playerPlayPauseBtn" aria-label="Play or Pause" type="button">▶</button>
       <audio id="globalAudioPlayer" controls></audio>
     </div>
-    <button class="player-close" id="playerCloseBtn" aria-label="Close Player">×</button>
+    <button class="player-close" id="playerCloseBtn" aria-label="Close Player" type="button">×</button>
   </div>
 
   <!-- Note Modal (Text & Edit) -->
@@ -124,7 +124,7 @@
     <div class="modal note-modal">
       <div class="modal-top">
         <div><div class="eyebrow" id="modalEyebrow">NOTE EDITOR</div><h2 id="modalTitle">A thought worth keeping</h2></div>
-        <button class="icon-button" data-close="noteModal" aria-label="Close">×</button>
+        <button class="icon-button" data-close="noteModal" aria-label="Close" type="button">×</button>
       </div>
       <input type="hidden" id="noteId">
       <label class="field-label" for="noteTitle">Title</label>
@@ -150,7 +150,7 @@
   <!-- Project Modal -->
   <div class="modal-backdrop hidden" id="projectModal" role="dialog" aria-modal="true" aria-labelledby="projectModalTitle">
     <div class="modal compact-modal">
-      <div class="modal-top"><div><div class="eyebrow">ORGANIZE YOUR IDEAS</div><h2 id="projectModalTitle">New project</h2></div><button class="icon-button" data-close="projectModal" aria-label="Close">×</button></div>
+      <div class="modal-top"><div><div class="eyebrow">ORGANIZE YOUR IDEAS</div><h2 id="projectModalTitle">New project</h2></div><button class="icon-button" data-close="projectModal" aria-label="Close" type="button">×</button></div>
       <label class="field-label" for="projectName">Project name</label><input class="text-field" id="projectName" placeholder="e.g. College, Ideas, Personal">
       <label class="field-label" for="projectDescription">Description <span class="optional">(optional)</span></label><input class="text-field" id="projectDescription" placeholder="What is this project about?">
       <div class="modal-bottom"><span class="muted-small">Keep related notes together</span><div><button class="secondary-button" data-close="projectModal" type="button">Cancel</button><button class="primary-button" id="saveProjectBtn" type="button">Create project</button></div></div>
@@ -160,7 +160,7 @@
   <!-- Voice Recorder Modal -->
   <div class="modal-backdrop hidden" id="voiceModal" role="dialog" aria-modal="true" aria-labelledby="voiceModalTitle">
     <div class="modal voice-modal">
-      <div class="modal-top"><div><div class="eyebrow">VOICE CAPTURE</div><h2 id="voiceModalTitle">Get it out of your head.</h2><p class="modal-description">Record a thought before it disappears.</p></div><button class="icon-button" data-close="voiceModal" aria-label="Close">×</button></div>
+      <div class="modal-top"><div><div class="eyebrow">VOICE CAPTURE</div><h2 id="voiceModalTitle">Get it out of your head.</h2><p class="modal-description">Record a thought before it disappears.</p></div><button class="icon-button" data-close="voiceModal" aria-label="Close" type="button">×</button></div>
       <div class="recording-stage">
         <div class="record-orb" id="recordOrb"><div class="mic-symbol">🎙</div></div>
         <div class="record-time" id="recordTime">00:00</div>

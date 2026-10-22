@@ -30,7 +30,7 @@ const globalAudioPlayer = document.getElementById('globalAudioPlayer');
 const playerPlayPauseBtn = document.getElementById('playerPlayPauseBtn');
 const playerCloseBtn = document.getElementById('playerCloseBtn');
 
-// Initialize Web Speech API Transcription
+// Initialize Web Speech API
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   speechRecognition = new SpeechRecognition();
@@ -210,7 +210,7 @@ playerCloseBtn?.addEventListener('click', () => {
   persistentPlayer.classList.add('hidden');
 });
 
-// Create & Edit Notes
+// Edit Modal Opening
 window.openEditModal = function(id) {
   const note = notes.find(n => n.id === id);
   if (!note) return;
@@ -232,12 +232,14 @@ window.openEditModal = function(id) {
   showModal('noteModal');
 };
 
-// FIXED: Save Note Button Action
-document.getElementById('saveNoteBtn')?.addEventListener('click', async () => {
+// FIXED: Save Note Action (Creates or Updates)
+document.getElementById('saveNoteBtn')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+  
   const { data: userData } = await supabaseClient.auth.getUser();
   const user = userData?.user;
   if (!user) {
-    showToast('User not authenticated.');
+    showToast('Please sign in first.');
     return;
   }
 
@@ -297,12 +299,14 @@ window.deleteNote = async function(id) {
   }
 };
 
-// FIXED: Create Project Button Action
-document.getElementById('saveProjectBtn')?.addEventListener('click', async () => {
+// FIXED: Create Project Action
+document.getElementById('saveProjectBtn')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+
   const { data: userData } = await supabaseClient.auth.getUser();
   const user = userData?.user;
   if (!user) {
-    showToast('User not authenticated.');
+    showToast('Please sign in first.');
     return;
   }
 
@@ -332,20 +336,21 @@ document.getElementById('saveProjectBtn')?.addEventListener('click', async () =>
   fetchWorkspaceData();
 });
 
-// Audio Recorder Actions
+// Audio Recorder Controls
 const startRecordBtn = document.getElementById('startRecordBtn');
 const stopRecordBtn = document.getElementById('stopRecordBtn');
 const recordOrb = document.getElementById('recordOrb');
 const recordTime = document.getElementById('recordTime');
 
-startRecordBtn?.addEventListener('click', async () => {
+startRecordBtn?.addEventListener('click', async (e) => {
+  e.preventDefault();
   liveTranscript = '';
   audioChunks = [];
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
 
-    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+    mediaRecorder.ondataavailable = (ev) => audioChunks.push(ev.data);
     mediaRecorder.onstop = () => {
       recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
       const audioUrl = URL.createObjectURL(recordedBlob);
@@ -372,7 +377,8 @@ startRecordBtn?.addEventListener('click', async () => {
   }
 });
 
-stopRecordBtn?.addEventListener('click', () => {
+stopRecordBtn?.addEventListener('click', (e) => {
+  e.preventDefault();
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   if (speechRecognition) speechRecognition.stop();
   clearInterval(recordTimer);
@@ -381,8 +387,9 @@ stopRecordBtn?.addEventListener('click', () => {
   stopRecordBtn.disabled = true;
 });
 
-// FIXED: Discard Audio Button Action
-document.getElementById('discardAudioBtn')?.addEventListener('click', () => {
+// FIXED: Discard Recording Action
+document.getElementById('discardAudioBtn')?.addEventListener('click', (e) => {
+  e.preventDefault();
   recordedBlob = null;
   audioChunks = [];
   document.getElementById('audioPlayer').src = '';
@@ -392,12 +399,14 @@ document.getElementById('discardAudioBtn')?.addEventListener('click', () => {
   showToast('Audio discarded');
 });
 
-// FIXED: Save Audio Voice Note Action
-document.getElementById('saveAudioBtn')?.addEventListener('click', async () => {
+// FIXED: Save Voice Note Action
+document.getElementById('saveAudioBtn')?.addEventListener('click', async (e) => {
+  e.preventDefault();
+
   const { data: userData } = await supabaseClient.auth.getUser();
   const user = userData?.user;
   if (!user) {
-    showToast('User not authenticated.');
+    showToast('Please sign in first.');
     return;
   }
 
@@ -438,7 +447,7 @@ document.getElementById('saveAudioBtn')?.addEventListener('click', async () => {
   showToast('Voice note saved online!');
   hideModal('voiceModal');
   
-  // Reset recorder preview state
+  // Reset preview UI
   recordedBlob = null;
   document.getElementById('audioPreview').classList.add('hidden');
   document.getElementById('voiceTitle').value = '';
@@ -447,7 +456,7 @@ document.getElementById('saveAudioBtn')?.addEventListener('click', async () => {
   fetchWorkspaceData();
 });
 
-// Modal Utilities
+// Modal Display Handlers
 function showModal(id) { document.getElementById(id)?.classList.remove('hidden'); }
 function hideModal(id) { document.getElementById(id)?.classList.add('hidden'); }
 
@@ -481,7 +490,7 @@ function escapeHtml(str) {
   return str ? str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]) : '';
 }
 
-// Initial Sync trigger after authentication
+// Initial Sync trigger on Auth load
 window.addEventListener('authReady', () => {
   fetchWorkspaceData();
 });
