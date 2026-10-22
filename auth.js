@@ -1,119 +1,106 @@
-// Supabase Auth Integration
-let currentAuthMode = 'signin'; // 'signin' or 'signup'
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const config = window.AUDIONOTES_CONFIG || {};
+  const configReady = config.supabaseUrl && config.supabasePublishableKey &&
+    !config.supabaseUrl.includes("PASTE_") && !config.supabasePublishableKey.includes("PASTE_");
+  let supabaseClient = null;
+  let mode = "login";
+  let user = null;
 
-document.addEventListener('DOMContentLoaded', () => {
-  const authForm = document.getElementById('authForm');
-  const authTitle = document.getElementById('authTitle');
-  const authIntro = document.getElementById('authIntro');
-  const authSubmit = document.getElementById('authSubmit');
-  const authSwitchBtn = document.getElementById('authSwitchBtn');
-  const authSwitchText = document.getElementById('authSwitchText');
-  const authError = document.getElementById('authError');
-  const authScreen = document.getElementById('authScreen');
-  const appShell = document.getElementById('appShell');
-  const accountButton = document.getElementById('accountButton');
-  const accountMenu = document.getElementById('accountMenu');
-  const accountEmail = document.getElementById('accountEmail');
-  const logoutBtn = document.getElementById('logoutBtn');
-
-  // Toggle Auth Mode
-  authSwitchBtn?.addEventListener('click', () => {
-    authError.classList.add('hidden');
-    if (currentAuthMode === 'signin') {
-      currentAuthMode = 'signup';
-      authTitle.innerHTML = 'Create account<span class="title-period">.</span>';
-      authIntro.textContent = 'Start capturing your thoughts in seconds.';
-      authSubmit.textContent = 'Create account';
-      authSwitchText.textContent = 'Already have an account?';
-      authSwitchBtn.textContent = 'Sign in';
-    } else {
-      currentAuthMode = 'signin';
-      authTitle.innerHTML = 'Welcome back<span class="title-period">.</span>';
-      authIntro.textContent = 'Sign in to pick up where your thoughts left off.';
-      authSubmit.textContent = 'Sign in';
-      authSwitchText.textContent = 'New to AudiNotes?';
-      authSwitchBtn.textContent = 'Create an account';
-    }
-  });
-
-  // Execute Authentication
-  async function handleAuth(e) {
-    if (e) e.preventDefault();
-    authError.classList.add('hidden');
-
-    const email = document.getElementById('authEmail').value.trim();
-    const password = document.getElementById('authPassword').value.trim();
-
-    if (!email || !password) {
-      showAuthError('Please fill in all fields.');
+  function showError(message) {
+    const el = $("authError");
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+  function clearError() {
+    $("authError").textContent = "";
+    $("authError").classList.add("hidden");
+  }
+  function setMode(nextMode) {
+    mode = nextMode;
+    clearError();
+    const signup = mode === "signup";
+    $("authTitle").innerHTML = signup ? 'Create your account<span class="title-period">.</span>' : 'Welcome back<span class="title-period">.</span>';
+    $("authEyebrow").textContent = signup ? "START YOUR PRIVATE WORKSPACE" : "YOUR PERSONAL WORKSPACE";
+    $("authIntro").textContent = signup ? "A place to keep your notes and recordings together." : "Sign in to pick up where your thoughts left off.";
+    $("authSubmit").textContent = signup ? "Create account" : "Sign in";
+    $("authSwitchText").textContent = signup ? "Already have an account?" : "New to AudiNotes?";
+    $("authSwitchBtn").textContent = signup ? "Sign in" : "Create an account";
+    $("authPassword").autocomplete = signup ? "new-password" : "current-password";
+  }
+  function setSignedIn(nextUser) {
+    user = nextUser || null;
+    $("authScreen").classList.toggle("hidden", !!user);
+    $("appShell").classList.toggle("auth-hidden", !user);
+    $("accountEmail").textContent = user?.email || "";
+    $("accountButton").textContent = user?.email?.slice(0,1).toUpperCase() || "A";
+    $("accountMenu").classList.add("hidden");
+    window.dispatchEvent(new CustomEvent("audionotes-auth-changed", {detail:{user, client:supabaseClient}}));
+  }
+  async function init() {
+    if (!configReady || !window.supabase?.createClient) {
+      $("authIntro").textContent = "Add your Supabase Project URL and publishable key in config.js to connect your account.";
+      showError("Supabase is not configured yet. Open config.js and replace both placeholder values.");
+      $("authSubmit").disabled = true;
       return;
     }
-
-    authSubmit.disabled = true;
-    authSubmit.textContent = 'Processing...';
-
+    supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
+      auth: { persistSession:true, autoRefreshToken:true, detectSessionInUrl:true }
+    });
+    const {data, error} = await supabaseClient.auth.getSession();
+    if(error) showError(error.message);
+    setSignedIn(data?.session?.user || null);
+    supabaseClient.auth.onAuthStateChange((_event, session) => setSignedIn(session?.user || null));
+  }
+  $("authForm").addEventListener("submit", async (event) => {
+    event.preventDefault(); clearError();
+    if(!supabaseClient) { showError("Supabase is not configured. Check config.js."); return; }
+    const email = $("authEmail").value.trim();
+    const password = $("authPassword").value;
+    const submit = $("authSubmit");
+    submit.disabled = true; submit.textContent = mode==="signup" ? "Creating account…" : "Signing in…";
     try {
-      if (currentAuthMode === 'signup') {
-        const { data, error } = await supabaseClient.auth.signUp({ email, password });
-        if (error) throw error;
-        
-        if (data?.session) {
-          showWorkspace(data.session.user);
+      if(mode==="signup") {
+      const {data, error} = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: window.location.origin + window.location.pathname
+        }
+      });        
+      if(error) throw error;
+        if(data.session) {
+          setSignedIn(data.session.user);
         } else {
-          showAuthError('Check your email for confirmation link or sign in.');
+          showError("Account created. Check your email for a confirmation link, then return here to sign in.");
         }
       } else {
-        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        showWorkspace(data.session.user);
+        const {data, error} = await supabaseClient.auth.signInWithPassword({email,password});
+        if(error) throw error;
+        setSignedIn(data.user);
       }
-    } catch (err) {
-      showAuthError(err.message || 'Authentication failed');
+    } catch(error) {
+      showError(error.message || "Authentication failed. Please try again.");
     } finally {
-      authSubmit.disabled = false;
-      authSubmit.textContent = currentAuthMode === 'signup' ? 'Create account' : 'Sign in';
-    }
-  }
-
-  authSubmit?.addEventListener('click', handleAuth);
-  authForm?.addEventListener('submit', handleAuth);
-
-  function showAuthError(msg) {
-    authError.textContent = msg;
-    authError.classList.remove('hidden');
-  }
-
-  function showWorkspace(user) {
-    authScreen.classList.add('hidden');
-    appShell.classList.remove('auth-hidden');
-    if (accountEmail) accountEmail.textContent = user.email;
-    if (accountButton) accountButton.textContent = user.email.charAt(0).toUpperCase();
-    window.dispatchEvent(new Event('authReady'));
-  }
-
-  // Account Dropdown Toggle
-  accountButton?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    accountMenu.classList.toggle('hidden');
-  });
-
-  document.addEventListener('click', () => {
-    accountMenu?.classList.add('hidden');
-  });
-
-  // Logout Handler
-  logoutBtn?.addEventListener('click', async () => {
-    await supabaseClient.auth.signOut();
-    window.location.reload();
-  });
-
-  // Session Observer
-  supabaseClient.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
-      showWorkspace(session.user);
-    } else {
-      authScreen.classList.remove('hidden');
-      appShell.classList.add('auth-hidden');
+      submit.disabled = false; submit.textContent = mode==="signup" ? "Create account" : "Sign in";
     }
   });
-});
+  $("authSwitchBtn").addEventListener("click",()=>setMode(mode==="login"?"signup":"login"));
+  $("accountButton").addEventListener("click",()=> $("accountMenu").classList.toggle("hidden"));
+  $("logoutBtn").addEventListener("click",async()=>{
+    if(!supabaseClient) return;
+    const {error}=await supabaseClient.auth.signOut();
+    if(error) showError(error.message);
+    else { $("accountMenu").classList.add("hidden"); setSignedIn(null); }
+  });
+  document.addEventListener("click",(e)=>{
+    if(!e.target.closest("#accountMenu")&&!e.target.closest("#accountButton")) $("accountMenu").classList.add("hidden");
+  });
+  window.AudiNotesAuth = {
+    getClient:()=>supabaseClient,
+    getUser:()=>user,
+    isConfigured:()=>!!supabaseClient
+  };
+  setMode("login");
+  init();
+})();

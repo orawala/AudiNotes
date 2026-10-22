@@ -1,4 +1,6 @@
-// Supabase Data Operations and Application State
+// Application State & References
+let supabaseClient = null;
+let currentUser = null;
 let notes = [];
 let projects = [];
 let activeFilter = 'all';
@@ -30,7 +32,7 @@ const globalAudioPlayer = document.getElementById('globalAudioPlayer');
 const playerPlayPauseBtn = document.getElementById('playerPlayPauseBtn');
 const playerCloseBtn = document.getElementById('playerCloseBtn');
 
-// Initialize Web Speech API
+// Initialize Web Speech API Transcription
 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   speechRecognition = new SpeechRecognition();
@@ -53,16 +55,29 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   };
 }
 
+// Listen for Auth Changes from auth.js
+window.addEventListener('audionotes-auth-changed', (event) => {
+  currentUser = event.detail.user;
+  supabaseClient = event.detail.client;
+
+  if (currentUser && supabaseClient) {
+    fetchWorkspaceData();
+  } else {
+    notes = [];
+    projects = [];
+    renderProjects();
+    renderNotes();
+  }
+});
+
 // Fetch Notes & Projects from Supabase
 async function fetchWorkspaceData() {
-  const { data: userData } = await supabaseClient.auth.getUser();
-  const user = userData?.user;
-  if (!user) return;
+  if (!supabaseClient || !currentUser) return;
 
   const { data: fetchProjects, error: pErr } = await supabaseClient
     .from('projects')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', currentUser.id)
     .order('created_at', { ascending: true });
 
   if (!pErr && fetchProjects) projects = fetchProjects;
@@ -70,7 +85,7 @@ async function fetchWorkspaceData() {
   const { data: fetchNotes, error: nErr } = await supabaseClient
     .from('notes')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', currentUser.id)
     .order('updated_at', { ascending: false });
 
   if (!nErr && fetchNotes) {
@@ -103,8 +118,8 @@ window.selectProject = function(id) {
   activeProjectId = id;
   const project = projects.find(p => p.id === id);
   if (project) {
-    currentCrumb.textContent = project.name;
-    pageTitle.childNodes[0].nodeValue = project.name;
+    if (currentCrumb) currentCrumb.textContent = project.name;
+    if (pageTitle && pageTitle.childNodes[0]) pageTitle.childNodes[0].nodeValue = project.name;
   }
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   renderProjects();
@@ -115,8 +130,8 @@ window.selectProject = function(id) {
 document.getElementById('crumbWorkspace')?.addEventListener('click', () => {
   activeFilter = 'all';
   activeProjectId = null;
-  currentCrumb.textContent = 'All notes';
-  pageTitle.childNodes[0].nodeValue = 'All notes';
+  if (currentCrumb) currentCrumb.textContent = 'All notes';
+  if (pageTitle && pageTitle.childNodes[0]) pageTitle.childNodes[0].nodeValue = 'All notes';
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.querySelector('.nav-item[data-filter="all"]')?.classList.add('active');
   renderProjects();
@@ -130,8 +145,8 @@ document.querySelectorAll('.nav-item').forEach(btn => {
     btn.classList.add('active');
     activeFilter = btn.dataset.filter;
     activeProjectId = null;
-    currentCrumb.textContent = btn.innerText.replace(/[0-9]/g, '').trim();
-    pageTitle.childNodes[0].nodeValue = currentCrumb.textContent;
+    if (currentCrumb) currentCrumb.textContent = btn.innerText.replace(/[0-9]/g, '').trim();
+    if (pageTitle && pageTitle.childNodes[0]) pageTitle.childNodes[0].nodeValue = currentCrumb.textContent;
     renderProjects();
     renderNotes();
   });
@@ -187,15 +202,17 @@ function renderNotes() {
 
 // Bottom Audio Player Controls
 window.playAudioTrack = function(title, audioUrl) {
+  if (!persistentPlayer || !globalAudioPlayer) return;
   playerTitle.textContent = title;
   playerSub.textContent = 'Voice Note';
   globalAudioPlayer.src = audioUrl;
   persistentPlayer.classList.remove('hidden');
   globalAudioPlayer.play();
-  playerPlayPauseBtn.textContent = '⏸';
+  if (playerPlayPauseBtn) playerPlayPauseBtn.textContent = '⏸';
 };
 
 playerPlayPauseBtn?.addEventListener('click', () => {
+  if (!globalAudioPlayer) return;
   if (globalAudioPlayer.paused) {
     globalAudioPlayer.play();
     playerPlayPauseBtn.textContent = '⏸';
@@ -206,11 +223,11 @@ playerPlayPauseBtn?.addEventListener('click', () => {
 });
 
 playerCloseBtn?.addEventListener('click', () => {
-  globalAudioPlayer.pause();
-  persistentPlayer.classList.add('hidden');
+  if (globalAudioPlayer) globalAudioPlayer.pause();
+  persistentPlayer?.classList.add('hidden');
 });
 
-// Edit Modal Opening
+// Edit Note Modal
 window.openEditModal = function(id) {
   const note = notes.find(n => n.id === id);
   if (!note) return;
@@ -232,14 +249,10 @@ window.openEditModal = function(id) {
   showModal('noteModal');
 };
 
-// FIXED: Save Note Action (Creates or Updates)
-document.getElementById('saveNoteBtn')?.addEventListener('click', async (e) => {
-  e.preventDefault();
-  
-  const { data: userData } = await supabaseClient.auth.getUser();
-  const user = userData?.user;
-  if (!user) {
-    showToast('Please sign in first.');
+// Save Note Action
+document.getElementById('saveNoteBtn')?.addEventListener('click', async () => {
+  if (!supabaseClient || !currentUser) {
+    showToast('User authentication error.');
     return;
   }
 
@@ -263,7 +276,7 @@ document.getElementById('saveNoteBtn')?.addEventListener('click', async (e) => {
     showToast('Note updated successfully');
   } else {
     const { error } = await supabaseClient.from('notes').insert({
-      user_id: user.id,
+      user_id: currentUser.id,
       title,
       body,
       type: 'text',
@@ -281,7 +294,7 @@ document.getElementById('saveNoteBtn')?.addEventListener('click', async (e) => {
   fetchWorkspaceData();
 });
 
-// Delete Note
+// Delete Note Action
 window.deleteNote = async function(id) {
   if (!confirm('Are you sure you want to delete this note?')) return;
   const note = notes.find(n => n.id === id);
@@ -299,14 +312,10 @@ window.deleteNote = async function(id) {
   }
 };
 
-// FIXED: Create Project Action
-document.getElementById('saveProjectBtn')?.addEventListener('click', async (e) => {
-  e.preventDefault();
-
-  const { data: userData } = await supabaseClient.auth.getUser();
-  const user = userData?.user;
-  if (!user) {
-    showToast('Please sign in first.');
+// Save Project Action
+document.getElementById('saveProjectBtn')?.addEventListener('click', async () => {
+  if (!supabaseClient || !currentUser) {
+    showToast('User authentication error.');
     return;
   }
 
@@ -319,7 +328,7 @@ document.getElementById('saveProjectBtn')?.addEventListener('click', async (e) =
   }
 
   const { error } = await supabaseClient.from('projects').insert({
-    user_id: user.id,
+    user_id: currentUser.id,
     name,
     description
   });
@@ -336,21 +345,20 @@ document.getElementById('saveProjectBtn')?.addEventListener('click', async (e) =
   fetchWorkspaceData();
 });
 
-// Audio Recorder Controls
+// Audio Recording Controls
 const startRecordBtn = document.getElementById('startRecordBtn');
 const stopRecordBtn = document.getElementById('stopRecordBtn');
 const recordOrb = document.getElementById('recordOrb');
 const recordTime = document.getElementById('recordTime');
 
-startRecordBtn?.addEventListener('click', async (e) => {
-  e.preventDefault();
+startRecordBtn?.addEventListener('click', async () => {
   liveTranscript = '';
   audioChunks = [];
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
 
-    mediaRecorder.ondataavailable = (ev) => audioChunks.push(ev.data);
+    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
     mediaRecorder.onstop = () => {
       recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
       const audioUrl = URL.createObjectURL(recordedBlob);
@@ -377,8 +385,7 @@ startRecordBtn?.addEventListener('click', async (e) => {
   }
 });
 
-stopRecordBtn?.addEventListener('click', (e) => {
-  e.preventDefault();
+stopRecordBtn?.addEventListener('click', () => {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   if (speechRecognition) speechRecognition.stop();
   clearInterval(recordTimer);
@@ -387,9 +394,8 @@ stopRecordBtn?.addEventListener('click', (e) => {
   stopRecordBtn.disabled = true;
 });
 
-// FIXED: Discard Recording Action
-document.getElementById('discardAudioBtn')?.addEventListener('click', (e) => {
-  e.preventDefault();
+// Discard Audio Recording Action
+document.getElementById('discardAudioBtn')?.addEventListener('click', () => {
   recordedBlob = null;
   audioChunks = [];
   document.getElementById('audioPlayer').src = '';
@@ -399,14 +405,10 @@ document.getElementById('discardAudioBtn')?.addEventListener('click', (e) => {
   showToast('Audio discarded');
 });
 
-// FIXED: Save Voice Note Action
-document.getElementById('saveAudioBtn')?.addEventListener('click', async (e) => {
-  e.preventDefault();
-
-  const { data: userData } = await supabaseClient.auth.getUser();
-  const user = userData?.user;
-  if (!user) {
-    showToast('Please sign in first.');
+// Save Voice Note Action
+document.getElementById('saveAudioBtn')?.addEventListener('click', async () => {
+  if (!supabaseClient || !currentUser) {
+    showToast('User authentication error.');
     return;
   }
 
@@ -417,7 +419,7 @@ document.getElementById('saveAudioBtn')?.addEventListener('click', async (e) => 
 
   const title = document.getElementById('voiceTitle').value.trim() || 'Voice Recording';
   const transcript = document.getElementById('transcriptText').value;
-  const storagePath = `${user.id}/${Date.now()}.webm`;
+  const storagePath = `${currentUser.id}/${Date.now()}.webm`;
 
   const { error: uploadErr } = await supabaseClient.storage
     .from('notes_audio')
@@ -429,7 +431,7 @@ document.getElementById('saveAudioBtn')?.addEventListener('click', async (e) => 
   }
 
   const { error: insertErr } = await supabaseClient.from('notes').insert({
-    user_id: user.id,
+    user_id: currentUser.id,
     title,
     type: 'voice',
     storage_path: storagePath,
@@ -447,7 +449,6 @@ document.getElementById('saveAudioBtn')?.addEventListener('click', async (e) => 
   showToast('Voice note saved online!');
   hideModal('voiceModal');
   
-  // Reset preview UI
   recordedBlob = null;
   document.getElementById('audioPreview').classList.add('hidden');
   document.getElementById('voiceTitle').value = '';
@@ -456,7 +457,7 @@ document.getElementById('saveAudioBtn')?.addEventListener('click', async (e) => 
   fetchWorkspaceData();
 });
 
-// Modal Display Handlers
+// Modal Helper Utilities
 function showModal(id) { document.getElementById(id)?.classList.remove('hidden'); }
 function hideModal(id) { document.getElementById(id)?.classList.add('hidden'); }
 
@@ -490,7 +491,9 @@ function escapeHtml(str) {
   return str ? str.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m]) : '';
 }
 
-// Initial Sync trigger on Auth load
-window.addEventListener('authReady', () => {
+// Fallback init check if auth already loaded
+if (window.AudiNotesAuth?.getUser()) {
+  currentUser = window.AudiNotesAuth.getUser();
+  supabaseClient = window.AudiNotesAuth.getClient();
   fetchWorkspaceData();
-});
+}
