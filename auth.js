@@ -2,7 +2,7 @@
   const $ = (id) => document.getElementById(id);
   const config = window.AUDIONOTES_CONFIG || {};
 
-  // FIXED: Properly validates presence of keys without strictly expecting "eyJ..." format
+  // FIXED: Properly validates key presence regardless of publishable key prefix format
   const configReady = Boolean(
     config.supabaseUrl &&
     config.supabasePublishableKey &&
@@ -33,8 +33,6 @@
     clearError();
     const signup = mode === "signup";
     $("authTitle").innerHTML = signup ? 'Create your account<span class="title-period">.</span>' : 'Welcome back<span class="title-period">.</span>';
-    $("authEyebrow").textContent = signup ? "START YOUR PRIVATE WORKSPACE" : "YOUR PERSONAL WORKSPACE";
-    $("authIntro").textContent = signup ? "A place to keep your notes and recordings together." : "Sign in to pick up where your thoughts left off.";
     $("authSubmit").textContent = signup ? "Create account" : "Sign in";
     $("authSwitchText").textContent = signup ? "Already have an account?" : "New to AudiNotes?";
     $("authSwitchBtn").textContent = signup ? "Sign in" : "Create an account";
@@ -56,13 +54,12 @@
 
   async function init() {
     if (!configReady || !window.supabase?.createClient) {
-      $("authIntro").textContent = "Add your Supabase Project URL and publishable key in config.js to connect your account.";
-      showError("Supabase is not configured yet. Open config.js and replace both placeholder values.");
+      showError("Supabase is not configured yet. Open config.js and check your URL and publishable key.");
       $("authSubmit").disabled = true;
       return;
     }
 
-    // Initialize global Supabase Client
+    // Initialize global Supabase client instance
     window.supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabasePublishableKey, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
@@ -104,7 +101,7 @@
         if (data.session) {
           setSignedIn(data.session.user);
         } else {
-          showError("Account created. Check your email for a confirmation link, then return here to sign in.");
+          showError("Account created. Check your email for a confirmation link.");
         }
       } else {
         const { data, error } = await window.supabaseClient.auth.signInWithPassword({ email, password });
