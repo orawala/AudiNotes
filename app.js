@@ -7,6 +7,7 @@ let activeFilter = 'all';
 let activeProjectId = null;
 let searchQuery = '';
 let mediaRecorder = null;
+let audioStream = null;
 let audioChunks = [];
 let recordTimer = null;
 let recordSeconds = 0;
@@ -55,7 +56,7 @@ if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
   };
 }
 
-// Listen for Auth Changes from auth.js
+// Listen for Auth Changes
 window.addEventListener('audionotes-auth-changed', (event) => {
   currentUser = event.detail.user;
   supabaseClient = event.detail.client;
@@ -200,11 +201,10 @@ function renderNotes() {
   `).join('');
 }
 
-// Bottom Audio Player Controls
+// Persistent Bottom Audio Player Controls (Spotify Style)
 window.playAudioTrack = function(title, audioUrl) {
   if (!persistentPlayer || !globalAudioPlayer) return;
   playerTitle.textContent = title;
-  playerSub.textContent = 'Voice Note';
   globalAudioPlayer.src = audioUrl;
   persistentPlayer.classList.remove('hidden');
   globalAudioPlayer.play();
@@ -345,7 +345,7 @@ document.getElementById('saveProjectBtn')?.addEventListener('click', async () =>
   fetchWorkspaceData();
 });
 
-// Audio Recording Controls
+// Audio Recording Controls (Lag-Free & Full Stream Release Fix)
 const startRecordBtn = document.getElementById('startRecordBtn');
 const stopRecordBtn = document.getElementById('stopRecordBtn');
 const recordOrb = document.getElementById('recordOrb');
@@ -355,10 +355,13 @@ startRecordBtn?.addEventListener('click', async () => {
   liveTranscript = '';
   audioChunks = [];
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(audioStream);
 
-    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+
     mediaRecorder.onstop = () => {
       recordedBlob = new Blob(audioChunks, { type: 'audio/webm' });
       const audioUrl = URL.createObjectURL(recordedBlob);
@@ -366,10 +369,10 @@ startRecordBtn?.addEventListener('click', async () => {
       document.getElementById('audioPreview').classList.remove('hidden');
     };
 
-    mediaRecorder.start();
+    mediaRecorder.start(250);
     if (speechRecognition) speechRecognition.start();
 
-    recordOrb.classList.add('recording');
+    recordOrb?.classList.add('recording');
     startRecordBtn.disabled = true;
     stopRecordBtn.disabled = false;
 
@@ -378,7 +381,7 @@ startRecordBtn?.addEventListener('click', async () => {
       recordSeconds++;
       const m = String(Math.floor(recordSeconds / 60)).padStart(2, '0');
       const s = String(recordSeconds % 60).padStart(2, '0');
-      recordTime.textContent = `${m}:${s}`;
+      if (recordTime) recordTime.textContent = `${m}:${s}`;
     }, 1000);
   } catch (err) {
     alert('Microphone access denied or unavailable.');
@@ -386,10 +389,20 @@ startRecordBtn?.addEventListener('click', async () => {
 });
 
 stopRecordBtn?.addEventListener('click', () => {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+
+  // Explicitly close audio stream tracks to release browser microphone indicator
+  if (audioStream) {
+    audioStream.getTracks().forEach(track => track.stop());
+    audioStream = null;
+  }
+
   if (speechRecognition) speechRecognition.stop();
   clearInterval(recordTimer);
-  recordOrb.classList.remove('recording');
+
+  recordOrb?.classList.remove('recording');
   startRecordBtn.disabled = false;
   stopRecordBtn.disabled = true;
 });
