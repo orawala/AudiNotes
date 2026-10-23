@@ -45,37 +45,35 @@
     </aside>
 
     <main class="main-area">
-      <header class="topbar">
-        <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false" type="button">☰</button>
-        <div class="topbar-user">
-          <span class="user-email" id="accountEmail"></span>
-          <button class="secondary-button logout-btn" id="logoutBtn" type="button">Log out</button>
-        </div>
-      </header>
+     <header class="topbar">
+  <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false" type="button">☰</button>
+  <div class="topbar-user">
+    <button class="secondary-button hidden" id="backToProjectsBtn" type="button">← Projects</button>
+    <button class="secondary-button" id="newTextBtn" type="button"><span>＋</span> Text note</button>
+    <button class="primary-button" id="newVoiceBtn" type="button"><span>●</span> Record voice</button>
+    <button class="primary-button hidden" id="newProjectBtn" type="button"><span>＋</span> New project</button>
+    <span class="user-email" id="accountEmail"></span>
+    <button class="secondary-button logout-btn" id="logoutBtn" type="button">Log out</button>
+  </div>
+</header>
 
-      <section class="content">
-        <div class="page-heading">
-          <div>
-            <h1 id="pageTitle">All notes<span class="title-period">.</span></h1>
-          </div>
-          <div class="heading-actions">
-            <button class="secondary-button hidden" id="backToProjectsBtn" type="button">← Projects</button>
-            <button class="secondary-button" id="newTextBtn" type="button"><span>＋</span> Text note</button>
-            <button class="primary-button" id="newVoiceBtn" type="button"><span>●</span> Record voice</button>
-            <button class="primary-button hidden" id="newProjectBtn" type="button"><span>＋</span> New project</button>
-          </div>
-        </div>
+<section class="content">
+  <div class="page-heading">
+    <div>
+      <h1 id="pageTitle">All notes<span class="title-period">.</span></h1>
+    </div>
+  </div>
 
-        <div class="search-row">
-          <label class="search-box"><span class="search-icon">⌕</span><input id="searchInput" type="search" placeholder="Search your notes..." autocomplete="off" aria-label="Search notes"><kbd id="searchHint">Ctrl K</kbd></label>
-        </div>
+  <div class="search-row">
+    <label class="search-box"><span class="search-icon">⌕</span><input id="searchInput" type="search" placeholder="Search your notes..." autocomplete="off" aria-label="Search notes"><kbd id="searchHint">Ctrl K</kbd></label>
+  </div>
 
-        <div class="notes-toolbar">
-          <div><strong id="notesHeading">Recent notes</strong><span id="notesCount">0 items</span></div>
-        </div>
+  <div class="notes-toolbar">
+    <div><strong id="notesHeading">Recent notes</strong><span id="notesCount">0 items</span></div>
+  </div>
 
-        <div class="notes-grid" id="notesGrid"></div>
-      </section>
+  <div class="notes-grid" id="notesGrid"></div>
+</section>
 
       <div class="drop-tray" id="dropTray" aria-hidden="true"></div>
 

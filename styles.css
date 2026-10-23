@@ -1241,3 +1241,110 @@ select.text-field {
   }
 }
 
+/* Sidebar flex layout to stretch navigation items vertically */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: #141519;
+  border-right: 1px solid #25262d;
+  padding: 27px 17px 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Sidebar navigation container filling remaining height */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 8px;
+  min-height: 0;
+}
+
+/* Vertical expansion for nav buttons with responsiveness */
+.nav-item {
+  flex: 1;
+  min-height: 48px;
+  max-height: 120px;
+  border: 0;
+  background: transparent;
+  color: #9b9daa;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  text-align: left;
+  gap: 12px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 500;
+  transition: background .15s, color .15s;
+}
+
+.nav-item:hover {
+  background: #1c1d23;
+  color: #eee;
+}
+
+.nav-item.active {
+  background: #25272c;
+  color: #f4f4f7;
+}
+
+/* Topbar layout adjustment for action buttons */
+.topbar {
+  height: 70px;
+  border-bottom: 1px solid #25262d;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4.2%;
+  gap: 16px;
+}
+
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+/* Responsive handling for mobile/small screens */
+@media (max-width: 720px) {
+  .topbar {
+    height: auto;
+    padding: 12px 18px;
+  }
+
+  .topbar-user {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .topbar-user button {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+  .user-email {
+    max-width: 120px;
+  }
+
+  .sidebar-nav {
+    flex: initial;
+  }
+
+  .nav-item {
+    height: 52px;
+    flex: initial;
+    max-height: none;
+  }
+}
