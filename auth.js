@@ -44,8 +44,7 @@
     $("authScreen").classList.toggle("hidden", !!user);
     $("appShell").classList.toggle("auth-hidden", !user);
     $("accountEmail").textContent = user?.email || "";
-    $("accountButton").textContent = user?.email?.slice(0,1).toUpperCase() || "A";
-    $("accountMenu").classList.add("hidden");
+    $("accountEmail").title = user?.email || "";
 
     window.dispatchEvent(new CustomEvent("audionotes-auth-changed", {
       detail: { user, client: window.supabaseClient }
@@ -117,21 +116,13 @@
   });
 
   $("authSwitchBtn")?.addEventListener("click", () => setMode(mode === "login" ? "signup" : "login"));
-  $("accountButton")?.addEventListener("click", () => $("accountMenu").classList.toggle("hidden"));
 
   $("logoutBtn")?.addEventListener("click", async () => {
     if (!window.supabaseClient) return;
     const { error } = await window.supabaseClient.auth.signOut();
     if (error) showError(error.message);
     else { 
-      $("accountMenu").classList.add("hidden"); 
       setSignedIn(null); 
-    }
-  });
-
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest("#accountMenu") && !e.target.closest("#accountButton")) {
-      $("accountMenu")?.classList.add("hidden");
     }
   });
 

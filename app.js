@@ -7,10 +7,11 @@ let supabaseClient = null;
 let currentUser = null;
 let notes = [];
 let projects = [];
-let activeFilter = 'all';
-let activeProjectId = null;
+let activeFilter = 'all';      // 'projects' | 'all' | 'text' | 'voice'
+let activeProjectId = null;    // set while looking inside one project
 let searchQuery = '';
 let playingId = null;
+let draggedNoteId = null;
 
 // Recording state
 let mediaRecorder = null;
@@ -20,8 +21,6 @@ let recordTimer = null;
 let recordSeconds = 0;
 let recordedBlob = null;
 let recordedDuration = 0;
-let speechRecognition = null;
-let liveTranscript = '';
 
 // DOM references
 const $ = (id) => document.getElementById(id);
@@ -30,11 +29,12 @@ const sidebarScrim = $('sidebarScrim');
 const mobileMenu = $('mobileMenu');
 const notesGrid = $('notesGrid');
 const notesCount = $('notesCount');
+const notesHeading = $('notesHeading');
 const allCount = $('allCount');
-const projectList = $('projectList');
+const projectCount = $('projectCount');
 const searchInput = $('searchInput');
-const currentCrumb = $('currentCrumb');
 const pageTitle = $('pageTitle');
+const dropTray = $('dropTray');
 
 const persistentPlayer = $('persistentPlayer');
 const playerTitle = $('playerTitle');
@@ -48,7 +48,7 @@ const recordTime = $('recordTime');
 const recordState = $('recordState');
 const saveAudioBtn = $('saveAudioBtn');
 
-const FILTER_LABELS = { all: 'All notes', text: 'Text notes', voice: 'Voice notes' };
+const FILTER_LABELS = { projects: 'Projects', all: 'All notes', text: 'Text notes', voice: 'Voice notes' };
 const START_LABEL = '<span>●</span> Start recording';
 const MOBILE_QUERY = window.matchMedia('(max-width: 720px)');
 
@@ -72,15 +72,17 @@ function showToast(msg) {
 const sameId = (a, b) => a != null && b != null && String(a) === String(b);
 const findNote = (id) => notes.find((n) => sameId(n.id, id));
 const findProject = (id) => projects.find((p) => sameId(p.id, id));
-
-function setHeading(text) {
-  if (currentCrumb) currentCrumb.textContent = text;
-  if (pageTitle && pageTitle.childNodes[0]) pageTitle.childNodes[0].nodeValue = text;
-}
+const isProjectsView = () => activeFilter === 'projects' && !activeProjectId;
 
 function formatDate(value) {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatClock(totalSeconds) {
+  const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
+  const s = String(totalSeconds % 60).padStart(2, '0');
+  return `${m}:${s}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,29 +100,6 @@ sidebarScrim?.addEventListener('click', () => setSidebar(false));
 MOBILE_QUERY.addEventListener('change', (e) => { if (!e.matches) setSidebar(false); });
 
 // ---------------------------------------------------------------------------
-// Speech recognition (live transcript while recording)
-// ---------------------------------------------------------------------------
-if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  speechRecognition = new SpeechRecognition();
-  speechRecognition.continuous = true;
-  speechRecognition.interimResults = true;
-
-  speechRecognition.onresult = (event) => {
-    let interim = '';
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-      if (event.results[i].isFinal) {
-        liveTranscript += event.results[i][0].transcript + ' ';
-      } else {
-        interim += event.results[i][0].transcript;
-      }
-    }
-    const field = $('transcriptText');
-    if (field) field.value = (liveTranscript + interim).trim();
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Auth + data
 // ---------------------------------------------------------------------------
 window.addEventListener('audionotes-auth-changed', (event) => {
@@ -133,8 +112,9 @@ window.addEventListener('audionotes-auth-changed', (event) => {
     closePlayer();
     notes = [];
     projects = [];
-    renderProjects();
-    renderNotes();
+    activeFilter = 'all';
+    activeProjectId = null;
+    render();
   }
 });
 
@@ -147,7 +127,14 @@ async function fetchWorkspaceData() {
     .eq('user_id', currentUser.id)
     .order('created_at', { ascending: true });
 
-  if (!pErr && fetchProjects) projects = fetchProjects;
+  if (!pErr && fetchProjects) {
+    projects = fetchProjects;
+    // The project we were looking at no longer exists
+    if (activeProjectId && !findProject(activeProjectId)) {
+      activeProjectId = null;
+      activeFilter = 'projects';
+    }
+  }
 
   const { data: fetchNotes, error: nErr } = await supabaseClient
     .from('notes')
@@ -166,378 +153,87 @@ async function fetchWorkspaceData() {
     });
   }
 
-  renderProjects();
-  renderNotes();
+  render();
 }
 
 // ---------------------------------------------------------------------------
-// Sidebar: projects + filters
+// Views: Projects / All notes / Text notes / Voice notes / inside one project
 // ---------------------------------------------------------------------------
-function renderProjects() {
-  if (!projectList) return;
-  projectList.innerHTML = projects.map((p) => `
-    <button class="project-item ${sameId(activeProjectId, p.id) ? 'active' : ''}" data-project-id="${escapeHtml(p.id)}" type="button">
-      <span class="project-color"></span>
-      <span class="project-name">${escapeHtml(p.name)}</span>
-    </button>
-  `).join('');
-}
-
-projectList?.addEventListener('click', (e) => {
-  const item = e.target.closest('[data-project-id]');
-  if (!item) return;
-  const project = findProject(item.dataset.projectId);
-  if (!project) return;
-
-  activeProjectId = project.id;
-  setHeading(project.name);
-  document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('active'));
-  renderProjects();
-  renderNotes();
+function setView(filter, projectId = null) {
+  activeFilter = filter;
+  activeProjectId = projectId;
+  render();
   setSidebar(false);
-});
+}
+
+function updateChrome() {
+  const project = activeProjectId ? findProject(activeProjectId) : null;
+  const projectsView = isProjectsView();
+
+  const title = project ? project.name : FILTER_LABELS[activeFilter];
+  if (pageTitle?.childNodes[0]) pageTitle.childNodes[0].nodeValue = title;
+  document.title = `${title} · AudiNotes`;
+
+  const activeNav = activeProjectId ? 'projects' : activeFilter;
+  document.querySelectorAll('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.filter === activeNav));
+
+  $('backToProjectsBtn').classList.toggle('hidden', !activeProjectId);
+  $('newTextBtn').classList.toggle('hidden', projectsView);
+  $('newVoiceBtn').classList.toggle('hidden', projectsView);
+  $('newProjectBtn').classList.toggle('hidden', !projectsView);
+
+  notesHeading.textContent = projectsView ? 'All projects' : activeProjectId ? 'Notes in this project' : 'Recent notes';
+  searchInput.placeholder = projectsView ? 'Search projects...' : 'Search your notes...';
+  searchInput.setAttribute('aria-label', projectsView ? 'Search projects' : 'Search notes');
+}
+
+function render() {
+  if (allCount) allCount.textContent = notes.length;
+  if (projectCount) projectCount.textContent = projects.length;
+  updateChrome();
+  if (isProjectsView()) renderProjectCards();
+  else renderNotes();
+}
 
 document.querySelectorAll('.nav-item').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('active'));
-    btn.classList.add('active');
-    activeFilter = btn.dataset.filter;
-    activeProjectId = null;
-    setHeading(FILTER_LABELS[activeFilter] || 'All notes');
-    renderProjects();
-    renderNotes();
-    setSidebar(false);
-  });
+  btn.addEventListener('click', () => setView(btn.dataset.filter));
 });
 
-$('crumbWorkspace')?.addEventListener('click', () => {
-  activeFilter = 'all';
-  activeProjectId = null;
-  setHeading(FILTER_LABELS.all);
-  document.querySelectorAll('.nav-item').forEach((el) => el.classList.remove('active'));
-  document.querySelector('.nav-item[data-filter="all"]')?.classList.add('active');
-  renderProjects();
-  renderNotes();
-});
+$('backToProjectsBtn')?.addEventListener('click', () => setView('projects'));
 
 // ---------------------------------------------------------------------------
-// Notes grid
+// Project cards
 // ---------------------------------------------------------------------------
-function renderNotes() {
-  if (!notesGrid) return;
+function renderProjectCards() {
+  const q = searchQuery.toLowerCase();
+  const filtered = projects.filter((p) =>
+    !q || (p.name || '').toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q)
+  );
 
-  let filtered = notes.filter((n) => {
-    if (activeProjectId) return sameId(n.project_id, activeProjectId);
-    if (activeFilter === 'text') return n.type === 'text';
-    if (activeFilter === 'voice') return n.type === 'voice';
-    return true;
-  });
-
-  if (searchQuery) {
-    const q = searchQuery.toLowerCase();
-    filtered = filtered.filter((n) =>
-      (n.title || '').toLowerCase().includes(q) ||
-      (n.body && n.body.toLowerCase().includes(q)) ||
-      (n.transcript && n.transcript.toLowerCase().includes(q))
-    );
-  }
-
-  if (allCount) allCount.textContent = notes.length;
-  if (notesCount) notesCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}`;
+  notesCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'project' : 'projects'}`;
 
   if (filtered.length === 0) {
-    notesGrid.innerHTML = searchQuery
-      ? '<p class="no-results">No notes match your search.</p>'
-      : '';
+    notesGrid.innerHTML = searchQuery ? '<p class="no-results">No projects match your search.</p>' : '';
     return;
   }
 
-  notesGrid.innerHTML = filtered.map((n) => `
-    <div class="note-card" data-id="${escapeHtml(n.id)}" draggable="true" tabindex="0" aria-label="Open note: ${escapeHtml(n.title)}">
+  notesGrid.innerHTML = filtered.map((p) => {
+    const count = notes.filter((n) => sameId(n.project_id, p.id)).length;
+    return `
+    <div class="note-card project-card" data-project-id="${escapeHtml(p.id)}" tabindex="0" aria-label="Open project: ${escapeHtml(p.name)}">
       <div class="note-card-top">
-        <span class="type-pill ${escapeHtml(n.type)}">${escapeHtml(n.type)}</span>
+        <span class="type-pill project">project</span>
+        <button class="round-btn delete-btn" data-action="delete-project" type="button" aria-label="Delete project" title="Delete project">✕</button>
       </div>
-      <h3>${escapeHtml(n.title)}</h3>
-      <p class="note-excerpt">${escapeHtml(n.body || n.transcript || 'No content provided.')}</p>
-
+      <h3>${escapeHtml(p.name)}</h3>
+      <p class="note-excerpt">${escapeHtml(p.description || 'No description')}</p>
       <div class="note-card-bottom">
-        <span class="note-date">${formatDate(n.updated_at || n.created_at)}</span>
-        <div class="note-actions">
-          ${n.audio_url ? '<button class="round-btn play-btn" data-action="play" type="button" aria-label="Play recording" title="Play">▶</button>' : ''}
-          <button class="round-btn delete-btn" data-action="delete" type="button" aria-label="Delete note" title="Delete">✕</button>
-        </div>
+        <span class="note-date">${count} ${count === 1 ? 'note' : 'notes'}</span>
       </div>
-    </div>
-  `).join('');
-
-  syncPlayState();
+    </div>`;
+  }).join('');
 }
 
-// One delegated listener for every card button and for the card itself
-notesGrid?.addEventListener('click', (e) => {
-  const actionEl = e.target.closest('[data-action]');
-  const action = actionEl?.dataset.action;
-
-  const card = e.target.closest('.note-card');
-  if (!card) return;
-  const id = card.dataset.id;
-
-  if (action === 'play') return togglePlayback(id);
-  if (action === 'delete') return deleteNote(id);
-  openEditModal(id); // "edit" button or a click anywhere else on the card
-});
-
-notesGrid?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && e.target.classList.contains('note-card')) openEditModal(e.target.dataset.id);
-});
-
-// ---------------------------------------------------------------------------
-// Drag a card onto a project to file it, or onto a workspace item to remove it from its project
-// ---------------------------------------------------------------------------
-let draggedNoteId = null;
-
-async function moveNoteToProject(noteId, projectId) {
-  const note = findNote(noteId);
-  if (!note || !supabaseClient) return;
-
-  const target = projectId == null ? null : findProject(projectId);
-  const nextId = target ? target.id : null;
-
-  if (sameId(note.project_id, nextId) || (note.project_id == null && nextId == null)) {
-    showToast(target ? `Already in ${target.name}` : 'This note isn’t in a project');
-    return;
-  }
-
-  const previous = note.project_id;
-  note.project_id = nextId; // update the screen first, undo if saving fails
-  renderNotes();
-
-  const { error } = await supabaseClient.from('notes').update({ project_id: nextId }).eq('id', note.id);
-  if (error) {
-    note.project_id = previous;
-    renderNotes();
-    showToast('Couldn’t move the note: ' + error.message);
-    return;
-  }
-  showToast(target ? `Moved to ${target.name}` : 'Removed from project');
-}
-
-function clearDropTargets() {
-  document.querySelectorAll('.drop-target').forEach((el) => el.classList.remove('drop-target'));
-}
-
-notesGrid?.addEventListener('dragstart', (e) => {
-  const card = e.target.closest?.('.note-card');
-  if (!card) return;
-  draggedNoteId = card.dataset.id;
-  e.dataTransfer.effectAllowed = 'move';
-  e.dataTransfer.setData('text/plain', draggedNoteId);
-  requestAnimationFrame(() => card.classList.add('dragging'));
-});
-
-notesGrid?.addEventListener('dragend', () => {
-  draggedNoteId = null;
-  document.querySelectorAll('.note-card.dragging').forEach((el) => el.classList.remove('dragging'));
-  clearDropTargets();
-});
-
-// Sidebar drop zones: project rows file the note, workspace rows (All / Text / Voice) un-file it
-function dropZoneFor(target) {
-  return target.closest?.('.project-item') || target.closest?.('.nav-item');
-}
-
-sidebar?.addEventListener('dragover', (e) => {
-  const zone = dropZoneFor(e.target);
-  if (!zone || !draggedNoteId) return;
-  e.preventDefault();
-  e.dataTransfer.dropEffect = 'move';
-  if (!zone.classList.contains('drop-target')) {
-    clearDropTargets();
-    zone.classList.add('drop-target');
-  }
-});
-
-sidebar?.addEventListener('dragleave', (e) => {
-  if (!sidebar.contains(e.relatedTarget)) clearDropTargets();
-});
-
-sidebar?.addEventListener('drop', (e) => {
-  const zone = dropZoneFor(e.target);
-  if (!zone || !draggedNoteId) return;
-  e.preventDefault();
-  const noteId = draggedNoteId;
-  clearDropTargets();
-  moveNoteToProject(noteId, zone.classList.contains('project-item') ? zone.dataset.projectId : null);
-});
-
-// ---------------------------------------------------------------------------
-// Bottom player
-// ---------------------------------------------------------------------------
-function syncPlayState() {
-  document.querySelectorAll('.note-card').forEach((card) => {
-    const isCurrent = sameId(card.dataset.id, playingId);
-    const isPlaying = isCurrent && !globalAudioPlayer.paused;
-    card.classList.toggle('playing', isCurrent);
-    const btn = card.querySelector('.play-btn');
-    if (btn) {
-      btn.textContent = isPlaying ? '❚❚' : '▶';
-      btn.classList.toggle('is-playing', isPlaying);
-      btn.setAttribute('aria-label', isPlaying ? 'Pause recording' : 'Play recording');
-      btn.title = isPlaying ? 'Pause' : 'Play';
-    }
-  });
-}
-
-function togglePlayback(id) {
-  const note = findNote(id);
-  if (!note || !note.audio_url) return;
-
-  if (sameId(playingId, id)) {
-    if (globalAudioPlayer.paused) globalAudioPlayer.play().catch(() => {});
-    else globalAudioPlayer.pause();
-    return;
-  }
-
-  playingId = note.id;
-  playerTitle.textContent = note.title || 'Voice note';
-  playerSub.textContent = findProject(note.project_id)?.name || 'Voice note';
-  globalAudioPlayer.src = note.audio_url;
-  persistentPlayer.classList.remove('idle');
-  globalAudioPlayer.play().catch(() => {});
-  syncPlayState();
-}
-
-// Puts the always-visible player back to its idle state
-function closePlayer() {
-  globalAudioPlayer.pause();
-  globalAudioPlayer.removeAttribute('src');
-  globalAudioPlayer.load();
-  playingId = null;
-  playerTitle.textContent = 'Nothing playing';
-  playerSub.textContent = 'Press play on a voice note';
-  persistentPlayer.classList.add('idle');
-  syncPlayState();
-}
-
-['play', 'pause', 'ended'].forEach((evt) => globalAudioPlayer.addEventListener(evt, syncPlayState));
-globalAudioPlayer.addEventListener('error', () => {
-  if (globalAudioPlayer.getAttribute('src')) showToast('Couldn’t play this recording. Check your connection and try again.');
-});
-
-// ---------------------------------------------------------------------------
-// Note editor
-// ---------------------------------------------------------------------------
-function fillProjectSelect(selectedId) {
-  const select = $('noteProject');
-  select.innerHTML = '<option value="">No project</option>' + projects
-    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
-    .join('');
-  select.value = selectedId != null && findProject(selectedId) ? String(findProject(selectedId).id) : '';
-}
-
-function openNewTextNote() {
-  $('noteId').value = '';
-  $('noteTitle').value = '';
-  $('noteBody').value = '';
-  $('modalTranscript').value = '';
-  $('modalTranscriptSection').classList.add('hidden');
-  $('modalTitle').textContent = 'New note';
-  fillProjectSelect(activeProjectId);
-  showModal('noteModal');
-}
-
-function openEditModal(id) {
-  const note = findNote(id);
-  if (!note) return;
-
-  $('noteId').value = note.id;
-  $('noteTitle').value = note.title || '';
-  $('noteBody').value = note.body || '';
-  $('modalTitle').textContent = 'Edit note';
-  fillProjectSelect(note.project_id);
-
-  const transcriptSec = $('modalTranscriptSection');
-  if (note.type === 'voice') {
-    transcriptSec.classList.remove('hidden');
-    $('modalTranscript').value = note.transcript || '';
-  } else {
-    transcriptSec.classList.add('hidden');
-  }
-
-  showModal('noteModal');
-}
-
-$('saveNoteBtn')?.addEventListener('click', async (e) => {
-  if (!supabaseClient || !currentUser) {
-    showToast('You’re signed out. Sign in again to save.');
-    return;
-  }
-
-  const btn = e.currentTarget;
-  const id = $('noteId').value;
-  const title = $('noteTitle').value.trim() || 'Untitled note';
-  const body = $('noteBody').value;
-  const transcript = $('modalTranscript')?.value || '';
-  const projectId = $('noteProject').value ? findProject($('noteProject').value)?.id ?? null : null;
-
-  btn.disabled = true;
-  try {
-    if (id) {
-      const { error } = await supabaseClient.from('notes').update({
-        title,
-        body,
-        transcript,
-        project_id: projectId,
-        updated_at: new Date().toISOString()
-      }).eq('id', id);
-
-      if (error) throw error;
-      showToast('Note saved');
-    } else {
-      const { error } = await supabaseClient.from('notes').insert({
-        user_id: currentUser.id,
-        title,
-        body,
-        type: 'text',
-        project_id: projectId
-      });
-
-      if (error) throw error;
-      showToast('Note created');
-    }
-  } catch (err) {
-    showToast('Couldn’t save the note: ' + err.message);
-    btn.disabled = false;
-    return;
-  }
-
-  btn.disabled = false;
-  hideModal('noteModal');
-  fetchWorkspaceData();
-});
-
-async function deleteNote(id) {
-  if (!confirm('Delete this note? This can’t be undone.')) return;
-  const note = findNote(id);
-
-  if (sameId(playingId, id)) closePlayer();
-
-  if (note && note.storage_path) {
-    await supabaseClient.storage.from('notes_audio').remove([note.storage_path]);
-  }
-
-  const { error } = await supabaseClient.from('notes').delete().eq('id', id);
-  if (!error) {
-    showToast('Note deleted');
-    fetchWorkspaceData();
-  } else {
-    showToast('Couldn’t delete the note. Try again.');
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Projects
-// ---------------------------------------------------------------------------
 $('saveProjectBtn')?.addEventListener('click', async () => {
   if (!supabaseClient || !currentUser) {
     showToast('You’re signed out. Sign in again to save.');
@@ -571,6 +267,351 @@ $('saveProjectBtn')?.addEventListener('click', async () => {
   fetchWorkspaceData();
 });
 
+async function deleteProject(id) {
+  const project = findProject(id);
+  if (!project) return;
+
+  const count = notes.filter((n) => sameId(n.project_id, id)).length;
+  const keepNote = count
+    ? ` Its ${count} ${count === 1 ? 'note' : 'notes'} will stay in All notes.`
+    : '';
+  if (!confirm(`Delete the project “${project.name}”?${keepNote}`)) return;
+
+  // Free the notes first so they aren't lost or blocked by a foreign key
+  const { error: freeErr } = await supabaseClient
+    .from('notes')
+    .update({ project_id: null })
+    .eq('project_id', project.id)
+    .eq('user_id', currentUser.id);
+  if (freeErr) {
+    showToast('Couldn’t delete the project: ' + freeErr.message);
+    return;
+  }
+
+  const { error } = await supabaseClient.from('projects').delete().eq('id', project.id);
+  if (error) {
+    showToast('Couldn’t delete the project: ' + error.message);
+    return;
+  }
+
+  showToast('Project deleted');
+  fetchWorkspaceData();
+}
+
+// ---------------------------------------------------------------------------
+// Note cards
+// ---------------------------------------------------------------------------
+function noteExcerpt(n) {
+  if (n.body) return n.body;
+  if (n.type === 'voice') return n.duration_seconds ? `Voice recording, ${formatClock(n.duration_seconds)}` : 'Voice recording';
+  return 'Empty note';
+}
+
+function renderNotes() {
+  let filtered = notes.filter((n) => {
+    if (activeProjectId) return sameId(n.project_id, activeProjectId);
+    if (activeFilter === 'text') return n.type === 'text';
+    if (activeFilter === 'voice') return n.type === 'voice';
+    return true;
+  });
+
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    filtered = filtered.filter((n) =>
+      (n.title || '').toLowerCase().includes(q) ||
+      (n.body && n.body.toLowerCase().includes(q))
+    );
+  }
+
+  notesCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'item' : 'items'}`;
+
+  if (filtered.length === 0) {
+    notesGrid.innerHTML = searchQuery ? '<p class="no-results">No notes match your search.</p>' : '';
+    return;
+  }
+
+  notesGrid.innerHTML = filtered.map((n) => `
+    <div class="note-card" data-id="${escapeHtml(n.id)}" draggable="true" tabindex="0" aria-label="Open note: ${escapeHtml(n.title)}">
+      <div class="note-card-top">
+        <span class="type-pill ${escapeHtml(n.type)}">${escapeHtml(n.type)}</span>
+        <button class="round-btn delete-btn" data-action="delete" type="button" aria-label="Delete note" title="Delete">✕</button>
+      </div>
+      <h3>${escapeHtml(n.title || 'Untitled note')}</h3>
+      <p class="note-excerpt">${escapeHtml(noteExcerpt(n))}</p>
+      <div class="note-card-bottom">
+        <span class="note-date">${formatDate(n.updated_at || n.created_at)}</span>
+        ${n.audio_url ? '<button class="round-btn play-btn" data-action="play" type="button" aria-label="Play recording" title="Play">▶</button>' : ''}
+      </div>
+    </div>
+  `).join('');
+
+  syncPlayState();
+}
+
+// One delegated listener for every card and every button on a card
+notesGrid?.addEventListener('click', (e) => {
+  const card = e.target.closest('.note-card');
+  if (!card) return;
+  const action = e.target.closest('[data-action]')?.dataset.action;
+
+  if (card.dataset.projectId) {
+    if (action === 'delete-project') return deleteProject(card.dataset.projectId);
+    return setView('all', findProject(card.dataset.projectId)?.id ?? null);
+  }
+
+  const id = card.dataset.id;
+  if (action === 'play') return togglePlayback(id);
+  if (action === 'delete') return deleteNote(id);
+  openEditModal(id);
+});
+
+notesGrid?.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || !e.target.classList.contains('note-card')) return;
+  if (e.target.dataset.projectId) setView('all', findProject(e.target.dataset.projectId)?.id ?? null);
+  else openEditModal(e.target.dataset.id);
+});
+
+async function deleteNote(id) {
+  if (!confirm('Delete this note? This can’t be undone.')) return;
+  const note = findNote(id);
+
+  if (sameId(playingId, id)) closePlayer();
+
+  if (note && note.storage_path) {
+    await supabaseClient.storage.from('notes_audio').remove([note.storage_path]);
+  }
+
+  const { error } = await supabaseClient.from('notes').delete().eq('id', id);
+  if (!error) {
+    showToast('Note deleted');
+    fetchWorkspaceData();
+  } else {
+    showToast('Couldn’t delete the note. Try again.');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drag a note to file it in a project (or take it out of one)
+// ---------------------------------------------------------------------------
+async function moveNoteToProject(noteId, projectId) {
+  const note = findNote(noteId);
+  if (!note || !supabaseClient) return;
+
+  const target = projectId ? findProject(projectId) : null;
+  const nextId = target ? target.id : null;
+
+  if (sameId(note.project_id, nextId) || (note.project_id == null && nextId == null)) {
+    showToast(target ? `Already in ${target.name}` : 'This note isn’t in a project');
+    return;
+  }
+
+  const previous = note.project_id;
+  note.project_id = nextId; // update the screen first, undo if saving fails
+  render();
+
+  const { error } = await supabaseClient.from('notes').update({ project_id: nextId }).eq('id', note.id);
+  if (error) {
+    note.project_id = previous;
+    render();
+    showToast('Couldn’t move the note: ' + error.message);
+    return;
+  }
+  showToast(target ? `Moved to ${target.name}` : 'Removed from project');
+}
+
+function showDropTray(note) {
+  const chips = projects
+    .filter((p) => !sameId(p.id, note.project_id))
+    .map((p) => `<button class="drop-chip" data-project-id="${escapeHtml(p.id)}" type="button" tabindex="-1">Move to ${escapeHtml(p.name)}</button>`);
+  if (note.project_id != null) {
+    chips.push('<button class="drop-chip" data-project-id="" type="button" tabindex="-1">Remove from project</button>');
+  }
+  if (!chips.length) return;
+  dropTray.innerHTML = chips.join('');
+  dropTray.classList.add('visible');
+}
+
+function hideDropTray() {
+  dropTray.classList.remove('visible');
+  dropTray.querySelectorAll('.drop-target').forEach((el) => el.classList.remove('drop-target'));
+}
+
+notesGrid?.addEventListener('dragstart', (e) => {
+  const card = e.target.closest?.('.note-card');
+  if (!card || !card.dataset.id) return;
+  draggedNoteId = card.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', draggedNoteId);
+  // Change the page after the browser has captured the drag image
+  setTimeout(() => {
+    card.classList.add('dragging');
+    const note = findNote(draggedNoteId);
+    if (note) showDropTray(note);
+  }, 0);
+});
+
+notesGrid?.addEventListener('dragend', () => {
+  draggedNoteId = null;
+  document.querySelectorAll('.note-card.dragging').forEach((el) => el.classList.remove('dragging'));
+  hideDropTray();
+});
+
+dropTray?.addEventListener('dragover', (e) => {
+  const chip = e.target.closest('.drop-chip');
+  if (!chip || !draggedNoteId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  dropTray.querySelectorAll('.drop-target').forEach((el) => el !== chip && el.classList.remove('drop-target'));
+  chip.classList.add('drop-target');
+});
+
+dropTray?.addEventListener('dragleave', (e) => {
+  e.target.closest?.('.drop-chip')?.classList.remove('drop-target');
+});
+
+dropTray?.addEventListener('drop', (e) => {
+  const chip = e.target.closest('.drop-chip');
+  if (!chip || !draggedNoteId) return;
+  e.preventDefault();
+  const noteId = draggedNoteId;
+  hideDropTray();
+  moveNoteToProject(noteId, chip.dataset.projectId || null);
+});
+
+// ---------------------------------------------------------------------------
+// Bottom player (always visible)
+// ---------------------------------------------------------------------------
+function syncPlayState() {
+  document.querySelectorAll('.note-card[data-id]').forEach((card) => {
+    const isCurrent = sameId(card.dataset.id, playingId);
+    const isPlaying = isCurrent && !globalAudioPlayer.paused;
+    card.classList.toggle('playing', isCurrent);
+    const btn = card.querySelector('.play-btn');
+    if (btn) {
+      btn.textContent = isPlaying ? '❚❚' : '▶';
+      btn.classList.toggle('is-playing', isPlaying);
+      btn.setAttribute('aria-label', isPlaying ? 'Pause recording' : 'Play recording');
+      btn.title = isPlaying ? 'Pause' : 'Play';
+    }
+  });
+}
+
+function togglePlayback(id) {
+  const note = findNote(id);
+  if (!note || !note.audio_url) return;
+
+  if (sameId(playingId, id)) {
+    if (globalAudioPlayer.paused) globalAudioPlayer.play().catch(() => {});
+    else globalAudioPlayer.pause();
+    return;
+  }
+
+  playingId = note.id;
+  playerTitle.textContent = note.title || 'Voice note';
+  playerSub.textContent = findProject(note.project_id)?.name || 'Voice note';
+  globalAudioPlayer.src = note.audio_url;
+  persistentPlayer.classList.remove('idle');
+  globalAudioPlayer.play().catch(() => {});
+  syncPlayState();
+}
+
+// Puts the player back to its idle state
+function closePlayer() {
+  globalAudioPlayer.pause();
+  globalAudioPlayer.removeAttribute('src');
+  globalAudioPlayer.load();
+  playingId = null;
+  playerTitle.textContent = 'Nothing playing';
+  playerSub.textContent = 'Press play on a voice note';
+  persistentPlayer.classList.add('idle');
+  syncPlayState();
+}
+
+['play', 'pause', 'ended'].forEach((evt) => globalAudioPlayer.addEventListener(evt, syncPlayState));
+globalAudioPlayer.addEventListener('error', () => {
+  if (globalAudioPlayer.getAttribute('src')) showToast('Couldn’t play this recording. Check your connection and try again.');
+});
+
+// ---------------------------------------------------------------------------
+// Note editor
+// ---------------------------------------------------------------------------
+function fillProjectSelect(selectedId) {
+  const select = $('noteProject');
+  select.innerHTML = '<option value="">No project</option>' + projects
+    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
+    .join('');
+  const selected = selectedId != null ? findProject(selectedId) : null;
+  select.value = selected ? String(selected.id) : '';
+}
+
+function openNewTextNote() {
+  $('noteId').value = '';
+  $('noteTitle').value = '';
+  $('noteBody').value = '';
+  $('modalTitle').textContent = 'New note';
+  fillProjectSelect(activeProjectId);
+  showModal('noteModal');
+}
+
+function openEditModal(id) {
+  const note = findNote(id);
+  if (!note) return;
+
+  $('noteId').value = note.id;
+  $('noteTitle').value = note.title || '';
+  $('noteBody').value = note.body || '';
+  $('modalTitle').textContent = 'Edit note';
+  fillProjectSelect(note.project_id);
+  showModal('noteModal');
+}
+
+$('saveNoteBtn')?.addEventListener('click', async (e) => {
+  if (!supabaseClient || !currentUser) {
+    showToast('You’re signed out. Sign in again to save.');
+    return;
+  }
+
+  const btn = e.currentTarget;
+  const id = $('noteId').value;
+  const title = $('noteTitle').value.trim() || 'Untitled note';
+  const body = $('noteBody').value;
+  const projectId = findProject($('noteProject').value)?.id ?? null;
+
+  btn.disabled = true;
+  try {
+    if (id) {
+      const { error } = await supabaseClient.from('notes').update({
+        title,
+        body,
+        project_id: projectId,
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+
+      if (error) throw error;
+      showToast('Note saved');
+    } else {
+      const { error } = await supabaseClient.from('notes').insert({
+        user_id: currentUser.id,
+        title,
+        body,
+        type: 'text',
+        project_id: projectId
+      });
+
+      if (error) throw error;
+      showToast('Note created');
+    }
+  } catch (err) {
+    showToast('Couldn’t save the note: ' + err.message);
+    btn.disabled = false;
+    return;
+  }
+
+  btn.disabled = false;
+  hideModal('noteModal');
+  fetchWorkspaceData();
+});
+
 // ---------------------------------------------------------------------------
 // Voice recording
 // ---------------------------------------------------------------------------
@@ -592,12 +633,6 @@ function extensionFor(mime, fileName = '') {
   return fromName && fromName !== fileName ? fromName.toLowerCase() : 'webm';
 }
 
-function formatClock(totalSeconds) {
-  const m = String(Math.floor(totalSeconds / 60)).padStart(2, '0');
-  const s = String(totalSeconds % 60).padStart(2, '0');
-  return `${m}:${s}`;
-}
-
 function showRecordingPreview(blob) {
   const player = $('audioPlayer');
   if (player.src) URL.revokeObjectURL(player.src);
@@ -616,7 +651,6 @@ function releaseCapture() {
     audioStream.getTracks().forEach((track) => track.stop());
     audioStream = null;
   }
-  try { speechRecognition?.stop(); } catch (_) { /* not running */ }
   clearInterval(recordTimer);
   recordTimer = null;
 }
@@ -632,18 +666,16 @@ function resetVoiceModal() {
   recordedDuration = 0;
   recordSeconds = 0;
   audioChunks = [];
-  liveTranscript = '';
 
   recordOrb?.classList.remove('recording');
-  if (recordTime) recordTime.textContent = '00:00';
-  if (recordState) recordState.textContent = 'Ready when you are';
+  recordTime.textContent = '00:00';
+  recordState.textContent = 'Ready when you are';
   startRecordBtn.disabled = false;
   startRecordBtn.innerHTML = START_LABEL;
   stopRecordBtn.disabled = true;
 
   $('audioPreview').classList.add('hidden');
   $('voiceTitle').value = '';
-  $('transcriptText').value = '';
   $('audioUpload').value = '';
   saveAudioBtn.disabled = false;
   saveAudioBtn.textContent = 'Save voice note';
@@ -655,14 +687,12 @@ startRecordBtn?.addEventListener('click', async () => {
   // A new take replaces whatever was there before
   $('audioPreview').classList.add('hidden');
   recordedBlob = null;
-  $('transcriptText').value = '';
-  liveTranscript = '';
   audioChunks = [];
 
   try {
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
-    if (recordState) recordState.textContent = 'Microphone blocked. Allow access in your browser, then try again.';
+    recordState.textContent = 'Microphone blocked. Allow access in your browser, then try again.';
     showToast('Microphone access is blocked');
     return;
   }
@@ -676,16 +706,15 @@ startRecordBtn?.addEventListener('click', async () => {
     recordedBlob = new Blob(audioChunks, { type: recorder.mimeType || mime || 'audio/webm' });
     recordedDuration = recordSeconds;
     showRecordingPreview(recordedBlob);
-    if (recordState) recordState.textContent = 'Recording ready. Review it below.';
+    recordState.textContent = 'Recording ready. Review it below.';
   };
 
   recorder.start(250);
-  try { speechRecognition?.start(); } catch (_) { /* already running */ }
 
   recordOrb?.classList.add('recording');
   startRecordBtn.disabled = true;
   stopRecordBtn.disabled = false;
-  if (recordState) recordState.textContent = 'Recording…';
+  recordState.textContent = 'Recording…';
 
   recordSeconds = 0;
   recordTime.textContent = '00:00';
@@ -701,7 +730,6 @@ stopRecordBtn?.addEventListener('click', () => {
     audioStream.getTracks().forEach((track) => track.stop());
     audioStream = null;
   }
-  try { speechRecognition?.stop(); } catch (_) { /* not running */ }
   clearInterval(recordTimer);
   recordTimer = null;
 
@@ -731,9 +759,8 @@ $('audioUpload')?.addEventListener('change', (e) => {
   recordedDuration = 0;
   showRecordingPreview(file);
   $('voiceTitle').value = file.name.replace(/\.[^.]+$/, '');
-  $('transcriptText').value = '';
-  if (recordState) recordState.textContent = 'File ready. Review it below.';
-  if (recordTime) recordTime.textContent = '00:00';
+  recordState.textContent = 'File ready. Review it below.';
+  recordTime.textContent = '00:00';
 
   // Read the real length from the file
   const probe = new Audio();
@@ -746,7 +773,6 @@ $('audioUpload')?.addEventListener('change', (e) => {
     }
     URL.revokeObjectURL(probe.src);
   };
-  showToast('Uploaded files aren’t transcribed. You can type a transcript below.');
 });
 
 $('discardAudioBtn')?.addEventListener('click', () => {
@@ -765,7 +791,6 @@ saveAudioBtn?.addEventListener('click', async () => {
   }
 
   const title = $('voiceTitle').value.trim() || 'Voice recording';
-  const transcript = $('transcriptText').value;
   const mime = (recordedBlob.type || 'audio/webm').split(';')[0];
   const ext = extensionFor(recordedBlob.type, recordedBlob.name);
   const storagePath = `${currentUser.id}/${Date.now()}.${ext}`;
@@ -786,7 +811,6 @@ saveAudioBtn?.addEventListener('click', async () => {
       storage_path: storagePath,
       mime_type: mime,
       duration_seconds: recordedDuration,
-      transcript,
       project_id: activeProjectId
     });
     if (insertErr) {
@@ -841,7 +865,6 @@ $('projectModal')?.addEventListener('mousedown', (e) => {
 $('newTextBtn')?.addEventListener('click', openNewTextNote);
 $('newVoiceBtn')?.addEventListener('click', () => showModal('voiceModal'));
 $('newProjectBtn')?.addEventListener('click', () => showModal('projectModal'));
-$('sideAddProject')?.addEventListener('click', () => showModal('projectModal'));
 
 // Enter submits the project form from the name field
 $('projectName')?.addEventListener('keydown', (e) => {
@@ -854,7 +877,7 @@ $('projectName')?.addEventListener('keydown', (e) => {
 const isApple = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 if ($('searchHint')) $('searchHint').textContent = isApple ? '⌘ K' : 'Ctrl K';
 
-searchInput?.addEventListener('input', (e) => { searchQuery = e.target.value.trim(); renderNotes(); });
+searchInput?.addEventListener('input', (e) => { searchQuery = e.target.value.trim(); render(); });
 
 document.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -873,13 +896,14 @@ document.addEventListener('keydown', (e) => {
   if (document.activeElement === searchInput && searchInput.value) {
     searchInput.value = '';
     searchQuery = '';
-    renderNotes();
+    render();
   }
 });
 
 // ---------------------------------------------------------------------------
 // Init: pick up a session that finished loading before this script ran
 // ---------------------------------------------------------------------------
+render();
 if (window.AudiNotesAuth?.getUser()) {
   currentUser = window.AudiNotesAuth.getUser();
   supabaseClient = window.AudiNotesAuth.getClient();

@@ -30,38 +30,28 @@
     </div>
     <div class="auth-decoration"><div class="auth-decoration-orb"></div><div class="auth-quote">“Capture the thought.<br>Keep the meaning.”</div></div>
   </section>
-
-  <div class="account-menu hidden" id="accountMenu">
-    <div class="account-menu-email" id="accountEmail"></div>
     <button id="logoutBtn">Sign out</button>
   </div>
 
   <div class="app-shell" id="appShell">
     <div class="sidebar-scrim" id="sidebarScrim"></div>
-    <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
       <div class="brand">
         <div class="brand-mark"><span></span><span></span><span></span></div>
         <div><div class="brand-name">AudiNotes</div></div>
       </div>
-      <button class="primary-button new-project" id="newProjectBtn"><span class="plus">＋</span> New project</button>
-      <div class="side-label">WORKSPACE</div>
-      <button class="nav-item active" data-filter="all"><span class="nav-icon">▦</span> All notes <span class="nav-count" id="allCount">0</span></button>
-      <button class="nav-item" data-filter="text"><span class="nav-icon">▤</span> Text notes</button>
-      <button class="nav-item" data-filter="voice"><span class="nav-icon">◖</span> Voice notes</button>
-      <div class="projects-heading"><span class="side-label">PROJECTS</span><button class="icon-button small" id="sideAddProject" title="Add project">＋</button></div>
-      <div class="project-list" id="projectList"></div>
+      <button class="nav-item" data-filter="projects" type="button"><span class="nav-icon">▣</span> Projects <span class="nav-count" id="projectCount">0</span></button>
+      <button class="nav-item active" data-filter="all" type="button"><span class="nav-icon">▦</span> All notes <span class="nav-count" id="allCount">0</span></button>
+      <button class="nav-item" data-filter="text" type="button"><span class="nav-icon">▤</span> Text notes</button>
+      <button class="nav-item" data-filter="voice" type="button"><span class="nav-icon">◖</span> Voice notes</button>
     </aside>
 
     <main class="main-area">
       <header class="topbar">
         <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false" type="button">☰</button>
-        <nav class="breadcrumbs" id="breadcrumbNav" aria-label="Breadcrumb">
-          <button type="button" class="crumb-btn" id="crumbWorkspace">Workspace</button>
-          <span class="crumb-slash">/</span>
-          <strong id="currentCrumb">All notes</strong>
-        </nav>
-        <div class="top-actions">
-          <button class="avatar-button" id="accountButton" title="Account menu">A</button>
+        <div class="topbar-user">
+          <span class="user-email" id="accountEmail"></span>
+          <button class="secondary-button logout-btn" id="logoutBtn" type="button">Log out</button>
         </div>
       </header>
 
@@ -71,8 +61,10 @@
             <h1 id="pageTitle">All notes<span class="title-period">.</span></h1>
           </div>
           <div class="heading-actions">
-            <button class="secondary-button" id="newTextBtn"><span>＋</span> Text note</button>
-            <button class="primary-button" id="newVoiceBtn"><span>●</span> Record voice</button>
+            <button class="secondary-button hidden" id="backToProjectsBtn" type="button">← Projects</button>
+            <button class="secondary-button" id="newTextBtn" type="button"><span>＋</span> Text note</button>
+            <button class="primary-button" id="newVoiceBtn" type="button"><span>●</span> Record voice</button>
+            <button class="primary-button hidden" id="newProjectBtn" type="button"><span>＋</span> New project</button>
           </div>
         </div>
 
@@ -80,13 +72,14 @@
           <label class="search-box"><span class="search-icon">⌕</span><input id="searchInput" type="search" placeholder="Search your notes..." autocomplete="off" aria-label="Search notes"><kbd id="searchHint">Ctrl K</kbd></label>
         </div>
 
-        <!-- Toolbar without sorting option -->
         <div class="notes-toolbar">
           <div><strong id="notesHeading">Recent notes</strong><span id="notesCount">0 items</span></div>
         </div>
 
         <div class="notes-grid" id="notesGrid"></div>
       </section>
+
+      <div class="drop-tray" id="dropTray" aria-hidden="true"></div>
 
       <!-- Bottom player: always visible; idle until a voice note is played -->
       <div class="persistent-player idle" id="persistentPlayer" role="region" aria-label="Audio player">
@@ -118,11 +111,6 @@
       <select class="text-field" id="noteProject"></select>
       <label class="field-label" for="noteBody">Content</label>
       <textarea class="text-field note-body" id="noteBody" placeholder="Start writing here..."></textarea>
-      
-      <div id="modalTranscriptSection" class="hidden">
-        <label class="field-label" for="modalTranscript">Transcript</label>
-        <textarea class="text-field transcript-field" id="modalTranscript" placeholder="Voice transcription will appear here..."></textarea>
-      </div>
 
       <div class="modal-bottom">
         <div></div>
@@ -163,8 +151,6 @@
         <audio id="audioPlayer" controls></audio>
         <label class="field-label" for="voiceTitle">Recording title</label>
         <input class="text-field" id="voiceTitle" placeholder="Name this recording">
-        <label class="field-label" for="transcriptText">Transcript</label>
-        <textarea class="text-field transcript-field" id="transcriptText" placeholder="Speech transcription will generate here..."></textarea>
         <div class="preview-actions">
           <button class="secondary-button" id="discardAudioBtn" type="button">Discard</button>
           <button class="primary-button" id="saveAudioBtn" type="button">Save voice note</button>
