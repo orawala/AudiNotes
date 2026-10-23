@@ -34,24 +34,26 @@
   <div class="app-shell" id="appShell">
     <div class="sidebar-scrim" id="sidebarScrim"></div>
     <aside class="sidebar" id="sidebar" aria-label="Main navigation">
-      <div class="brand">
-        <div class="brand-mark"><span></span><span></span><span></span></div>
-        <div><div class="brand-name">AudiNotes</div></div>
-      </div>
-      <button class="nav-item" data-filter="projects" type="button"><span class="nav-icon">▣</span> Projects <span class="nav-count" id="projectCount">0</span></button>
-      <button class="nav-item active" data-filter="all" type="button"><span class="nav-icon">▦</span> All notes <span class="nav-count" id="allCount">0</span></button>
-      <button class="nav-item" data-filter="text" type="button"><span class="nav-icon">▤</span> Text notes</button>
-      <button class="nav-item" data-filter="voice" type="button"><span class="nav-icon">◖</span> Voice notes</button>
-    </aside>
-
+  <div class="brand">
+    <div class="brand-mark"><span></span><span></span><span></span></div>
+    <div><div class="brand-name">AudiNotes</div></div>
+  </div>
+  
+  <div class="sidebar-nav">
+    <button class="nav-item" data-filter="projects" type="button"><span class="nav-icon">▣</span> Projects <span class="nav-count" id="projectCount">0</span></button>
+    <button class="nav-item active" data-filter="all" type="button"><span class="nav-icon">▦</span> All notes <span class="nav-count" id="allCount">0</span></button>
+    <button class="nav-item" data-filter="text" type="button"><span class="nav-icon">▤</span> Text notes</button>
+    <button class="nav-item" data-filter="voice" type="button"><span class="nav-icon">◖</span> Voice notes</button>
+  </div>
+</aside>
     <main class="main-area">
-     <header class="topbar">
+    <header class="topbar">
   <button class="mobile-menu icon-button" id="mobileMenu" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false" type="button">☰</button>
   <div class="topbar-user">
     <button class="secondary-button hidden" id="backToProjectsBtn" type="button">← Projects</button>
     <button class="secondary-button" id="newTextBtn" type="button"><span>＋</span> Text note</button>
     <button class="primary-button" id="newVoiceBtn" type="button"><span>●</span> Record voice</button>
-    <button class="primary-button hidden" id="newProjectBtn" type="button"><span>＋</span> New project</button>
+    <button class="primary-button" id="newProjectBtn" type="button"><span>＋</span> New project</button>
     <span class="user-email" id="accountEmail"></span>
     <button class="secondary-button logout-btn" id="logoutBtn" type="button">Log out</button>
   </div>

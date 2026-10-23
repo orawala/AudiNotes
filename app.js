@@ -177,10 +177,13 @@ function updateChrome() {
   const activeNav = activeProjectId ? 'projects' : activeFilter;
   document.querySelectorAll('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.filter === activeNav));
 
-  $('backToProjectsBtn').classList.toggle('hidden', !activeProjectId);
-  $('newTextBtn').classList.toggle('hidden', projectsView);
-  $('newVoiceBtn').classList.toggle('hidden', projectsView);
-  $('newProjectBtn').classList.toggle('hidden', !projectsView);
+  // Keep back button visible only inside a project view
+  $('backToProjectsBtn')?.classList.toggle('hidden', !activeProjectId);
+
+  // Keep all creation buttons visible in topbar across all menus
+  $('newTextBtn')?.classList.remove('hidden');
+  $('newVoiceBtn')?.classList.remove('hidden');
+  $('newProjectBtn')?.classList.remove('hidden');
 
   notesHeading.textContent = projectsView ? 'All projects' : activeProjectId ? 'Notes in this project' : 'Recent notes';
   searchInput.placeholder = projectsView ? 'Search projects...' : 'Search your notes...';
