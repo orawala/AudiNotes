@@ -86,25 +86,20 @@
         </div>
 
         <div class="notes-grid" id="notesGrid"></div>
-
-        <footer class="page-footer">
-          <span>AudiNotes</span>
-        </footer>
       </section>
 
-      <!-- Bottom player: appears when a voice note is played -->
-      <div class="persistent-player hidden" id="persistentPlayer" role="region" aria-label="Audio player">
+      <!-- Bottom player: always visible; idle until a voice note is played -->
+      <div class="persistent-player idle" id="persistentPlayer" role="region" aria-label="Audio player">
         <div class="player-info">
           <span class="player-icon" aria-hidden="true">◖</span>
           <div class="player-text">
-            <strong id="playerTitle">Voice note</strong>
-            <span id="playerSub">Voice note</span>
+            <strong id="playerTitle">Nothing playing</strong>
+            <span id="playerSub">Press play on a voice note</span>
           </div>
         </div>
         <div class="player-controls">
           <audio id="globalAudioPlayer" controls preload="metadata"></audio>
         </div>
-        <button class="player-close" id="playerCloseBtn" type="button" aria-label="Close player">×</button>
       </div>
     </main>
   </div>
@@ -119,6 +114,8 @@
       <input type="hidden" id="noteId">
       <label class="field-label" for="noteTitle">Title</label>
       <input class="text-field" id="noteTitle" placeholder="Give this note a title">
+      <label class="field-label" for="noteProject">Project</label>
+      <select class="text-field" id="noteProject"></select>
       <label class="field-label" for="noteBody">Content</label>
       <textarea class="text-field note-body" id="noteBody" placeholder="Start writing here..."></textarea>
       

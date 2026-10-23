@@ -247,23 +247,13 @@ function renderNotes() {
 
   if (filtered.length === 0) {
     notesGrid.innerHTML = searchQuery
-      ? `<div class="empty-state visible">
-           <h2>No matches</h2>
-           <p>Nothing matches “${escapeHtml(searchQuery)}”. Try a different word or clear the search.</p>
-         </div>`
-      : `<div class="empty-state visible">
-           <h2>Nothing here yet</h2>
-           <p>Write a note or record your voice and it will show up here.</p>
-           <div class="empty-actions">
-             <button class="secondary-button" data-action="new-text" type="button">＋ Text note</button>
-             <button class="primary-button" data-action="new-voice" type="button">● Record voice</button>
-           </div>
-         </div>`;
+      ? '<p class="no-results">No notes match your search.</p>'
+      : '';
     return;
   }
 
   notesGrid.innerHTML = filtered.map((n) => `
-    <div class="note-card" data-id="${escapeHtml(n.id)}" tabindex="0" aria-label="Open note: ${escapeHtml(n.title)}">
+    <div class="note-card" data-id="${escapeHtml(n.id)}" draggable="true" tabindex="0" aria-label="Open note: ${escapeHtml(n.title)}">
       <div class="note-card-top">
         <span class="type-pill ${escapeHtml(n.type)}">${escapeHtml(n.type)}</span>
       </div>
@@ -273,9 +263,8 @@ function renderNotes() {
       <div class="note-card-bottom">
         <span class="note-date">${formatDate(n.updated_at || n.created_at)}</span>
         <div class="note-actions">
-          ${n.audio_url ? '<button class="action-btn play-btn" data-action="play" type="button">▶ Play</button>' : ''}
-          <button class="action-btn edit-btn" data-action="edit" type="button">✎ Edit</button>
-          <button class="action-btn delete-btn" data-action="delete" type="button">✕ Delete</button>
+          ${n.audio_url ? '<button class="round-btn play-btn" data-action="play" type="button" aria-label="Play recording" title="Play">▶</button>' : ''}
+          <button class="round-btn delete-btn" data-action="delete" type="button" aria-label="Delete note" title="Delete">✕</button>
         </div>
       </div>
     </div>
@@ -288,9 +277,6 @@ function renderNotes() {
 notesGrid?.addEventListener('click', (e) => {
   const actionEl = e.target.closest('[data-action]');
   const action = actionEl?.dataset.action;
-
-  if (action === 'new-text') return openNewTextNote();
-  if (action === 'new-voice') return showModal('voiceModal');
 
   const card = e.target.closest('.note-card');
   if (!card) return;
@@ -306,6 +292,85 @@ notesGrid?.addEventListener('keydown', (e) => {
 });
 
 // ---------------------------------------------------------------------------
+// Drag a card onto a project to file it, or onto a workspace item to remove it from its project
+// ---------------------------------------------------------------------------
+let draggedNoteId = null;
+
+async function moveNoteToProject(noteId, projectId) {
+  const note = findNote(noteId);
+  if (!note || !supabaseClient) return;
+
+  const target = projectId == null ? null : findProject(projectId);
+  const nextId = target ? target.id : null;
+
+  if (sameId(note.project_id, nextId) || (note.project_id == null && nextId == null)) {
+    showToast(target ? `Already in ${target.name}` : 'This note isn’t in a project');
+    return;
+  }
+
+  const previous = note.project_id;
+  note.project_id = nextId; // update the screen first, undo if saving fails
+  renderNotes();
+
+  const { error } = await supabaseClient.from('notes').update({ project_id: nextId }).eq('id', note.id);
+  if (error) {
+    note.project_id = previous;
+    renderNotes();
+    showToast('Couldn’t move the note: ' + error.message);
+    return;
+  }
+  showToast(target ? `Moved to ${target.name}` : 'Removed from project');
+}
+
+function clearDropTargets() {
+  document.querySelectorAll('.drop-target').forEach((el) => el.classList.remove('drop-target'));
+}
+
+notesGrid?.addEventListener('dragstart', (e) => {
+  const card = e.target.closest?.('.note-card');
+  if (!card) return;
+  draggedNoteId = card.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', draggedNoteId);
+  requestAnimationFrame(() => card.classList.add('dragging'));
+});
+
+notesGrid?.addEventListener('dragend', () => {
+  draggedNoteId = null;
+  document.querySelectorAll('.note-card.dragging').forEach((el) => el.classList.remove('dragging'));
+  clearDropTargets();
+});
+
+// Sidebar drop zones: project rows file the note, workspace rows (All / Text / Voice) un-file it
+function dropZoneFor(target) {
+  return target.closest?.('.project-item') || target.closest?.('.nav-item');
+}
+
+sidebar?.addEventListener('dragover', (e) => {
+  const zone = dropZoneFor(e.target);
+  if (!zone || !draggedNoteId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if (!zone.classList.contains('drop-target')) {
+    clearDropTargets();
+    zone.classList.add('drop-target');
+  }
+});
+
+sidebar?.addEventListener('dragleave', (e) => {
+  if (!sidebar.contains(e.relatedTarget)) clearDropTargets();
+});
+
+sidebar?.addEventListener('drop', (e) => {
+  const zone = dropZoneFor(e.target);
+  if (!zone || !draggedNoteId) return;
+  e.preventDefault();
+  const noteId = draggedNoteId;
+  clearDropTargets();
+  moveNoteToProject(noteId, zone.classList.contains('project-item') ? zone.dataset.projectId : null);
+});
+
+// ---------------------------------------------------------------------------
 // Bottom player
 // ---------------------------------------------------------------------------
 function syncPlayState() {
@@ -314,7 +379,12 @@ function syncPlayState() {
     const isPlaying = isCurrent && !globalAudioPlayer.paused;
     card.classList.toggle('playing', isCurrent);
     const btn = card.querySelector('.play-btn');
-    if (btn) btn.textContent = isPlaying ? '❚❚ Pause' : '▶ Play';
+    if (btn) {
+      btn.textContent = isPlaying ? '❚❚' : '▶';
+      btn.classList.toggle('is-playing', isPlaying);
+      btn.setAttribute('aria-label', isPlaying ? 'Pause recording' : 'Play recording');
+      btn.title = isPlaying ? 'Pause' : 'Play';
+    }
   });
 }
 
@@ -332,23 +402,23 @@ function togglePlayback(id) {
   playerTitle.textContent = note.title || 'Voice note';
   playerSub.textContent = findProject(note.project_id)?.name || 'Voice note';
   globalAudioPlayer.src = note.audio_url;
-  persistentPlayer.classList.remove('hidden');
-  document.body.classList.add('player-open');
+  persistentPlayer.classList.remove('idle');
   globalAudioPlayer.play().catch(() => {});
   syncPlayState();
 }
 
+// Puts the always-visible player back to its idle state
 function closePlayer() {
   globalAudioPlayer.pause();
   globalAudioPlayer.removeAttribute('src');
   globalAudioPlayer.load();
   playingId = null;
-  persistentPlayer.classList.add('hidden');
-  document.body.classList.remove('player-open');
+  playerTitle.textContent = 'Nothing playing';
+  playerSub.textContent = 'Press play on a voice note';
+  persistentPlayer.classList.add('idle');
   syncPlayState();
 }
 
-$('playerCloseBtn')?.addEventListener('click', closePlayer);
 ['play', 'pause', 'ended'].forEach((evt) => globalAudioPlayer.addEventListener(evt, syncPlayState));
 globalAudioPlayer.addEventListener('error', () => {
   if (globalAudioPlayer.getAttribute('src')) showToast('Couldn’t play this recording. Check your connection and try again.');
@@ -357,6 +427,14 @@ globalAudioPlayer.addEventListener('error', () => {
 // ---------------------------------------------------------------------------
 // Note editor
 // ---------------------------------------------------------------------------
+function fillProjectSelect(selectedId) {
+  const select = $('noteProject');
+  select.innerHTML = '<option value="">No project</option>' + projects
+    .map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`)
+    .join('');
+  select.value = selectedId != null && findProject(selectedId) ? String(findProject(selectedId).id) : '';
+}
+
 function openNewTextNote() {
   $('noteId').value = '';
   $('noteTitle').value = '';
@@ -364,6 +442,7 @@ function openNewTextNote() {
   $('modalTranscript').value = '';
   $('modalTranscriptSection').classList.add('hidden');
   $('modalTitle').textContent = 'New note';
+  fillProjectSelect(activeProjectId);
   showModal('noteModal');
 }
 
@@ -375,6 +454,7 @@ function openEditModal(id) {
   $('noteTitle').value = note.title || '';
   $('noteBody').value = note.body || '';
   $('modalTitle').textContent = 'Edit note';
+  fillProjectSelect(note.project_id);
 
   const transcriptSec = $('modalTranscriptSection');
   if (note.type === 'voice') {
@@ -398,6 +478,7 @@ $('saveNoteBtn')?.addEventListener('click', async (e) => {
   const title = $('noteTitle').value.trim() || 'Untitled note';
   const body = $('noteBody').value;
   const transcript = $('modalTranscript')?.value || '';
+  const projectId = $('noteProject').value ? findProject($('noteProject').value)?.id ?? null : null;
 
   btn.disabled = true;
   try {
@@ -406,6 +487,7 @@ $('saveNoteBtn')?.addEventListener('click', async (e) => {
         title,
         body,
         transcript,
+        project_id: projectId,
         updated_at: new Date().toISOString()
       }).eq('id', id);
 
@@ -417,7 +499,7 @@ $('saveNoteBtn')?.addEventListener('click', async (e) => {
         title,
         body,
         type: 'text',
-        project_id: activeProjectId
+        project_id: projectId
       });
 
       if (error) throw error;
